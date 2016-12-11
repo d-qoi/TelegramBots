@@ -56,7 +56,7 @@ def receiveMessage(bot, update, chat_data):
 
 def modism(bot, update, chat_data):
 	if not 'mod_chat' in chat_data:
-		hat_data['mod_chat'] = list()
+		chat_data['mod_chat'] = list()
 	if update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins and chat_data['mod_chat']:
 		bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = choice(chat_data['mod_chat']))
 
