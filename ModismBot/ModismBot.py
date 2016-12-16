@@ -55,7 +55,7 @@ def receiveMessage(bot, update, chat_data):
 
 
 def modism(bot, update, chat_data):
-	if not 'mod_chat' in chat_data or not chat_data['mod_chat']):
+	if not 'mod_chat' in chat_data or len(chat_data['mod_chat']) == 0:
 		chat_data['mod_chat'] = list()
 		update.message.reply_text("The message list is empty, this bot was probably restarted.")
 	elif update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins and chat_data['mod_chat']:
