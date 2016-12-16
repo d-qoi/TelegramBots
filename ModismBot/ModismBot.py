@@ -64,7 +64,7 @@ def modism(bot, update, chat_data):
 def modismStats(bot, update, chat_data):
 	if 'mod_chat' in chat_data:
 		update.message.reply_text("Messages stored: %s" % str(len(chat_data['mod_chat'])))
-	elif:
+	else:
 		chat_data['mod_chat'] = list()
 		update.message.reply_text("The message list is empty, this bot was probably restarted.")
 
