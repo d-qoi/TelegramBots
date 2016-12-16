@@ -12,3 +12,4 @@ It will include the following features
 * MOTD
 * Schedule for making events
 * A few custom commands that will relay text
+* A repeat message
