@@ -26,8 +26,13 @@ mDatabase = None
 def chechTypeGroup(update):
     return (update.message.chat.type == 'group' or update.message.chat.type == 'supergroup')
 
-def userIsAdmin(bot, update):
-    return 
+# returns -1 if they are not found in the users collection
+def getUserID(username):
+    logger.debug("Finding %s's user ID" % username)
+    findRes = mDatabase.users.find({'username':username})
+    if findRes.count() > 0:
+        return findRes.next()['_id']
+    return -1
 
 def createChatDoc(bot, update):
     logger.debug("Creating Doc For :: Title: %s :: Username: %s :: ChatID: %s :: ChatType %s" % 
@@ -39,10 +44,8 @@ def createChatDoc(bot, update):
             newGroup = dict()
             newGroup['_id'] = update.message.chat.id
             newGroup['title'] = update.message.chat.title
-            newGroup['motd'] = "Admins can change the Message of the Day in PM"
+            newGroup['motd'] = "Can be changed with setMOTD"
             newGroup['custom_commands'] = [['message','This is a custom message, you can set a few of these']]
-            newGroup['admins'] = list()
-            newGroup['mods'] = list[]
             mDatabase.groups.insert(newGroup) 
             logger.info("Group %s (%s) joined" % (update.message.chat.title, update.message.chat.id))
         elif findRes.count() > 1:
@@ -50,16 +53,6 @@ def createChatDoc(bot, update):
             logger.warn("There are two group entries for %s (%s). Please fix" % (update.message.chat.title, update.message.chat.id))
         else:
             logger.info("Group %s (%s) joined again." % (update.message.chat.title, update.message.chat.id))
-
-# I am not sure when to make this happen, but it can
-def updateAdmins(bot, update):
-    if checkTypeGroup(update):
-        logger.debug("Updating admins for %s (%s)" (update.message.chat.title, update.message.chat.id))
-        admins = [chatmember.user.username for chatmember in update.message.chat.get_administrators()]
-        mDatabase.groups.update_one({'_id':update.message.chat.id},{'$set':{'admins':admins}})
-
-def addMod(bot, update, args):
-
 
 def start(bot, update):
     pass
