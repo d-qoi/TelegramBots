@@ -14,25 +14,55 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 		level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
+# Global variables
 authToken = None
 mongoURI = None
 mClient = None
+mDatabase = None
 
+def start(bot, update):
+	pass
 
+def help(bot, update):
+	pass
 
+# This should only be able to happen in groups, super groups, and chanels.
+# I am assuming that this bot will only be added to groups and super groups.
+def chatEventStatusUpdate(bot, update)
+	logger.debug("Status update for %s (%s)" % (update.message.chat.title, update.message.chat.id))
+	chatID = update.message.chat.id
+	chatTitle = update.message.chat.title
+
+	logger.debug(str(update.message.new_chat_member))
+	logger.debug(str(update.message.left_chat_member))
+	logger.debug(str(update.message.new_chat_title))
+
+	# if update.message.chat.type == 'group':
+		
+	# elif update.message.chat.type = 'supergroup':
+	# 	pass
+	# else:
+	# 	logger.info("There was a status update in a %s, ignoring." % update.message.chat.type)
+
+# Message of the day
+def MOTD(bot, update):
+	pass
 
 def main():
 	mClient = MongoClient(mongoURI)
+	mDatabase = mClient[mDatabase]
 	try:
-		logger.info("Database info:\n%s" % mClient.server_info())
+		logger.info("Mongo info:\n%s" % mClient.server_info())
+		mDatabase = mClient[mDatabase]
+
 	except:
-		logger.error("Database unreachable.")
+		logger.error("Mongo unreachable.")
 		raise
 
 	updater = Updater(authToken)
 	dp = updater.dispatcher
 
-	dp.
+	dp.add_handler(MessageHandler(Filters.status_update, chatEventStatusUpdate))
 
 	logger.info("Setup complete, polling...")
 
@@ -52,9 +82,8 @@ def startFromCLI():
 						help='If there is a user/passwd for the MongoDB instance, specify the user here')
 	parser.add_argument('-mPswd', '--mongoPswd', 
 						help='If there is a user/passwd for the MongoDB instance, specify the Password here')
-	# I don't know if this is the right use of this functionality, it is untested in this code
-	parser.add_argument('-mAthDB', '--mongoAthDB', default="",
-						help="The authentication database for MongoDB, default is none, only used if user and password are specified, this may be wrong")
+	parser.add_argument('-mDB', '--mongoDB', default="ChatUtil",
+						help="The database for MongoDB, default is ChatUtil")
 	parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
 						help='Logging level for the logger, default = debug')
 
@@ -64,12 +93,13 @@ def startFromCLI():
 	logger.setLevel(logLevel[args.llevel])
 
 	if args.mongoUser and args.mongoPswd:
-		mongoURI = "mongodb://%s:%s@%s:%d/%s" % (args.mongoUser, args.mongoPswd, args.mongoIP, args.mongoPort, args.mongoAthDB)
+		mongoURI = "mongodb://%s:%s@%s:%d" % (args.mongoUser, args.mongoPswd, args.mongoIP, args.mongoPort, args.mongoAthDB)
 	else:
 		mongoURI = "mongodb://%s:%d" % (args.mongoIP, args.mongoPort)
 
+	mDatabase = args.mongoDB
 	logger.info("MongoDB URI: %s" % (mongoURI))
-
+	logger.info("MongoDB DB: %s" % (mDatabase))
 	authToken = args.auth
 	logger.debug("TelegramAuth: %s" % (authToken))
 
