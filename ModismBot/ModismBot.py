@@ -13,7 +13,7 @@ import argparse
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
 	level=logging.INFO) # To make sure that it is just pushing modism debug into the log
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__) 
 
 # All of this should be moved, but lazy coder is lazy
 parser = argparse.ArgumentParser()
@@ -43,23 +43,14 @@ def help(bot, update):
 		update.message.reply_text("Why would you call this command, what were you expecting?")
 
 
-# def addSelfToGroup(bot, update):
-# 	if update.message.new_chat_member.username == bot.username and (update.message.chat.type == 'group' or update.message.chat.type == 'supergroup'):
-# 		logger.info("Bot was added to %s (%s)" % (update.message.chat.title, update.message.chat.id))
-# 		chat_data['mod_messages'] = list()
-
-
 def receiveMessage(bot, update):
 	if update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins:
 		adminIDs = [chatmember.user.username for chatmember in update.message.chat.get_administrators()]
 		if update.message.from_user.username in adminIDs:
 			logger.debug("Admins of %s: %s" % (update.message.chat.title, str(adminIDs)))
 			logger.debug("%s sent %s to %s" % (update.message.from_user.username, update.message.text, update.message.chat.title))
-			# if not 'mod_chat' in chat_data:
-			# 	chat_data['mod_chat'] = list()
-			# chat_data['mod_chat'].append(update.message.message_id)
 			mCollection.find_one_and_update({'_id':update.message.chat.id},{'$inc' : {'count':1}, '$push' : {"messages":update.message.message_id}}, upsert=True)
-			#logger.debug("Number of messages stored: %s" % (str(len(chat_data['mod_chat']))))
+
 
 
 def modism(bot, update):
@@ -72,7 +63,6 @@ def modism(bot, update):
 
 def modismStats(bot, update):
 	findRes = mCollection.find({'_id':update.message.chat.id})
-	#if 'mod_chat' in chat_data:
 	if findRes.count() > 0:
 		update.message.reply_text("Messages stored: %s" % str(findRes.next()['count']))
 	else:
@@ -95,7 +85,6 @@ def main():
 	dp.add_handler(CommandHandler('modismstats', modismStats))
 
 	dp.add_handler(MessageHandler(Filters.text, receiveMessage))
-	#dp.add_handler(MessageHandler(Filters.status_update, addSelfToGroup)
 	dp.add_error_handler(error)
 
 	updater.start_polling()
