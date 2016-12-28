@@ -19,8 +19,6 @@ logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-Token= "321091178:AAG5ve7E5keE3zRHJLsmGgs-r3D6OV0UNzc"
-
 r = sr.Recognizer()
 
 
