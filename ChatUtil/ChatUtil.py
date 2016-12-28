@@ -8,8 +8,8 @@ import logging
 import argparse
 
 from pymongo import MongoClient
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, RegexHandler
 
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -22,9 +22,15 @@ mongoURI = None
 mClient = None
 mDatabase = None
 
+# For the state machine of creating events, because conversation handlers are state machines
+EVENTSELECT, EVENTTYPING, EVENTCREATE = range(100,103) 
+
 # Utility commands
-def chechTypeGroup(update):
+def checkTypeGroup(update):
     return (update.message.chat.type == 'group' or update.message.chat.type == 'supergroup')
+
+def checkTypePrivate(update):
+    return update.message.chat.type == 'private'
 
 # returns -1 if they are not found in the users collection
 def getUserID(username):
@@ -35,17 +41,19 @@ def getUserID(username):
     return -1
 
 def createChatDoc(bot, update):
-    logger.debug("Creating Doc For :: Title: %s :: Username: %s :: ChatID: %s :: ChatType %s" % 
+    logger.info("Creating Doc For :: Title: %s :: Username: %s :: ChatID: %s :: ChatType %s" % 
         (update.message.chat.title, update.message.from_user.username, update.message.chat.id, update.message.chat.type))
     # treating groups and super groups as the same entity, it makes things easier, and they basically are.
-    if chechTypeGroup(update):
+    if checkTypeGroup(update):
         findRes = mDatabase.groups.find({'_id':update.message.chat.id})
         if findRes.count() == 0:
             newGroup = dict()
             newGroup['_id'] = update.message.chat.id
             newGroup['title'] = update.message.chat.title
-            newGroup['motd'] = "Can be changed with setMOTD"
-            newGroup['custom_commands'] = [['message','This is a custom message, you can set a few of these']]
+            newGroup['motd'] = 0
+            newGroup['custom_commands'] = [['example','This is a custom message, you can set a few of these']]
+            newGroup['activePolls'] = list()
+            newGroup['food']
             mDatabase.groups.insert(newGroup) 
             logger.info("Group %s (%s) joined" % (update.message.chat.title, update.message.chat.id))
         elif findRes.count() > 1:
@@ -53,12 +61,78 @@ def createChatDoc(bot, update):
             logger.warn("There are two group entries for %s (%s). Please fix" % (update.message.chat.title, update.message.chat.id))
         else:
             logger.info("Group %s (%s) joined again." % (update.message.chat.title, update.message.chat.id))
+    elif checkTypePrivate(update):
+        if mDatabase.users.find({'_id':update.message.from_user.id}).count():
+            update.message.reply_text("Welcome to the bot, how may I help?")
+
+
+def createEventDoc(forChatId, user_data):
+    logger.info("Creating Event for %s (%s)" % (update.message.chat.title, update.message.chat.id))
+    if mDatabase.groups.find({'_id':update.message.chat.id}).count():
+        newEvent = dict()
+        newEvent['id'] = forChatId
+        newEvent['Name'] = user_data['Name']
+        newEvent['Description'] = user_data['Description']
+        newEvent['Time'] = user_data['Time']
+        newEvent['Place'] = user_data['Place']
+        newEvent['Date'] = newEvent['Date']
+        mDatabase.events.insert(newEvent)
+        logger.debug("Created Event: %s" % (str(newEvent)))
+
+def addUserToGroup(userID, groupID, groupTitle):
+    logger.info("Adding user to ")
 
 def start(bot, update):
     pass
 
 def help(bot, update):
     pass
+
+def eventStartEditing(bot, update, user_data):
+    if checkTypePrivate(update):
+        logger.info("%s (%s) is creating an event." % (update.message.from_user.username, update.message.from_user.id))
+        for key in ['Name','Time','Date','Description','Place']:
+            user_data[key] = None
+        reply_keyboard = [['Name', 'Time', 'Date'],
+                          ['Chat','Place'],
+                          ['Description']]
+        if all (key in user_data for key in ['Name','Time','Date','Description','Place','Chat']):
+            reply_keyboard.append(['Cancel','Done'])
+        else:
+            reply_keyboard.append(['Cancel'])
+        markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+        reply_text = "Please select which you would like to edit, once you've entered something for all of these, you will be able to create the event."
+        update.message.reply_text(reply_text, reply_markup=markup)
+        return EVENTSELECT
+    else:
+        update.message.reply_text("Please message this bot directly to create an event.")
+        return ConversationHandler.END
+
+
+def eventSelectEditing(bot, update, user_data):
+    user_data[user_data['editing_choice']] = update.message.text
+    reply_keyboard = [['Name', 'Time', 'Date'],
+                      ['Description','Place']]
+    if all (key in user_data for key in ['Name','Time','Date','Description','Place']):
+        reply_keyboard.append(['Cancel','Done'])
+    else:
+        reply_keyboard.append(['Cancel'])
+    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    reply_text = "Please select which you would like to edit, once you've entered something for all of these, you will be able to create the event."
+    update.message.reply_text(reply_text, reply_markup=markup)
+    return EVENTSELECT
+
+def eventPromptTyping(bot, update, user_data):
+    userChoice = update.message.text
+    user_data['editing_choice'] = userChoice
+    if userChoice == 'Done':
+
+
+    elif userChoice == 'Cancel':
+
+    else:
+        reply_text = "Please send me the %s of the event." % userChoice.lower()
+        update.message.reply_text(reply_text)
 
 # This should only be able to happen in groups, super groups, and chanels.
 # I am assuming that this bot will only be added to groups and super groups.
@@ -82,12 +156,10 @@ def chatEventStatusUpdate(bot, update, chat_data):
 If you would like to interact with this bot, please register then send a message to this bot, to opt out at any time, just delete the chat with this bot and it will be unable to send you further messages."""
             bot.sendMessage(chat_id=chatID, text=replyText, reply_markup=reply_markup)
 
-    # if update.message.chat.type == 'group':
-        
-    # elif update.message.chat.type = 'supergroup':
-    #   pass
-    # else:
-    #   logger.info("There was a status update in a %s, ignoring." % update.message.chat.type)
+
+def callbackHandler(bot, update, chat_data, user_data):
+    query = update.callback_querry
+    querry_data = query.data
 
 # Message of the day
 def MOTD(bot, update):
@@ -109,6 +181,7 @@ def main():
 
     dp.add_handler(MessageHandler(Filters.status_update, chatEventStatusUpdate))
     dp.add_handler(CommandHandler('test', MOTD))
+    dp.add_handler(CallbackQueryHandler(callbackHandler, pass_chat_data = True, pass_user_data = True))
 
     logger.info("Setup complete, polling...")
 

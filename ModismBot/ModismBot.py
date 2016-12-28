@@ -19,6 +19,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
 parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], help='Logging level for the logger, default = debug')
 logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
+parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connectiong and auth")
+parser.add_argument('-mdb','--MongoDB', default='STT', help="The MongoDB Database that this will use")
 args = parser.parse_args()
 
 
