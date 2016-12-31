@@ -38,30 +38,37 @@ def start(bot, update):
 def help(bot, update):
     logger.debug('User "%s (%s)" /help' % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == 'private':
-        update.message.reply_text("Hi! This is the help command, I would recommend adding me to any group or super group and waiting for mods to speak before calling /modism")
+        update.message.reply_text("Hi! This is the help command, I would recommend adding me to any group or super group and waiting for admins to speak before calling /modism. \nThis bot will forward one of their previous messages in the chat back to the chat.")
     else:
         update.message.reply_text("Why would you call this command, what were you expecting?")
 
 
 def receiveMessage(bot, update):
     if update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins:
-        adminIDs = [chatmember.user.username for chatmember in update.message.chat.get_administrators()]
-        if update.message.from_user.username in adminIDs:
-            logger.debug("Admins of %s: %s" % (update.message.chat.title, str(adminIDs)))
-            logger.debug("%s sent %s to %s" % (update.message.from_user.username, update.message.text, update.message.chat.title))
+        admins = update.message.chat.get_administrators()
+        adminUsernames = [chatmember.user.username for chatmember in admins]
+        adminIDs = [chatmember.user.id for chatmember in admins]
+        if update.message.from_user.id in adminIDs:
+            logger.debug("Admins of %s: %s" % (update.message.chat.title, str(adminUsernames)))
+            #logger.debug("All Members Are Admins: %i" % (update.message.chat.all_members_are_admins))
+            logger.debug("%s in %s sent: %s" % (update.message.from_user.username, update.message.chat.title, update.message.text))
             mCollection.find_one_and_update({'_id':update.message.chat.id},{'$inc' : {'count':1}, '$push' : {"messages":update.message.message_id}}, upsert=True)
 
 
 
 def modism(bot, update):
+    logger.debug("User %s (%s) in chat %s (%s) called modism." % (update.message.from_user.username, update.message.from_user.id, update.message.chat.title, update.message.chat.id))
     findRes = mCollection.find({'_id':update.message.chat.id})
     if findRes.count() == 0:
         update.message.reply_text("The message list is empty, this bot was probably restarted.")
     elif update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins:
         data = findRes.next()['messages']
         bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = choice(data))
+    else:
+        update.message.reply_text("This bot doesn't work if all members are admins.")
 
 def modismStats(bot, update):
+    logger.debug("User %s (%s) in chat %s (%s) called modismStats." % (update.message.from_user.username, update.message.from_user.id, update.message.chat.title, update.message.chat.id))
     findRes = mCollection.find({'_id':update.message.chat.id})
     if findRes.count() > 0:
         update.message.reply_text("Messages stored: %s" % str(findRes.next()['count']))
