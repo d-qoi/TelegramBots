@@ -32,7 +32,7 @@ mCollection = mDatabase.groups
 def start(bot, update):
     logger.debug('User "%s (%s)" /start' % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == 'private':
-        update.message.reply_text('Hi, this bot is designed for use in Group and Supergroups, please add it to any that you wish. \help for more information.')
+        update.message.reply_text('Hi, this bot is designed for use in Group and Supergroups, please add it to any that you wish. /help for more information.')
 
 
 def help(bot, update):
