@@ -32,13 +32,13 @@ mCollection = mDatabase.groups
 def start(bot, update):
     logger.debug('User "%s (%s)" /start' % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == 'private':
-        update.message.reply_text('Hi, this bot is designed for use in Group and Supergroups, please add it to any that you wish.')
+        update.message.reply_text('Hi, this bot is designed for use in Group and Supergroups, please add it to any that you wish. /help for more information.')
 
 
 def help(bot, update):
     logger.debug('User "%s (%s)" /help' % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == 'private':
-        update.message.reply_text("Hi! This is the help command, I would recommend adding me to any group or super group and waiting for admins to speak before calling /modism. \nThis bot will forward one of their previous messages in the chat back to the chat.")
+        update.message.reply_text("Hi! This is the help command, I would recommend adding me to any group or super group and waiting for admins to speak before calling /modism. \nThis bot will forward one of their previous messages in the chat back to the chat.\nTalk to @YTKileroy if you need more help.")
     else:
         update.message.reply_text("Why would you call this command, what were you expecting?")
 
