@@ -23,7 +23,7 @@ MDB = None
 # Utility functions
 # Returns the list of chats that a user is admin of.
 def getChatsAdmining(id, username):
-    results = MDB.groups.find({'admins': {'$eq':id}})
+    results = MDB.groups.find({'admins': id})
     listOfChats = list()
     logger.debug("%s is in %i groups as admin" % (username, results.count()))
     for doc in results:
@@ -42,7 +42,12 @@ def getChatList():
 def start(bot, update, user_data):
     logger.debug("User %s (%s) called start." % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == "private":
+        user_data['active'] = False
+        user_data['reply_to'] = False
         admining = getChatsAdmining(update.message.from_user.id, update.message.from_user.username)
+        # result = MDB.active.find({'forward_to':{'$in':update.message.chat.id}}).count()
+        result = MDB.active.update({'forward_to':update.message.chat.id},{'$pull':{'forward_to':update.message.chat.id}})
+        logger.debug("Result of cleanup: %s" % result)
         #logger.debug("Admin of %s" % user_data['admin_of'])
         if admining:
             reply_text = "Hello @%s! You are an Admin of a few chats! Would you like to give feedback or reply to feedback!" % update.message.from_user.username
@@ -97,6 +102,7 @@ def statusReceived(bot, update):
         logger.debug("Removing entry for %s" % (update.message.chat.title))
 
 def forwardToAll(bot, list_of_chats, from_chat_id, message_id):
+    logger.debug("List of chats to forward a message to: %s" % list_of_chats)
     for chat in list_of_chats:
         bot.forward_message(chat_id=chat,
                             from_chat_id=from_chat_id,
@@ -228,7 +234,7 @@ def messageReceived(bot, update, user_data):
 
     if update.message.chat.type == 'private':
         # In case there was a reset of this server
-        if not user_data['active'] and not user_data['reply_to']:
+        if not 'active' in user_data and not 'reply_to' in user_data:
             user_data['active']=True
             if getChatsAdmining(update.message.from_user.id, update.message.from_user.username):
                 reply_text = "There was a server reset for this bot. You were previously replying to:\n"
@@ -253,27 +259,43 @@ def messageReceived(bot, update, user_data):
                     logger.warn("User %s (%s) managed to break the database if statement in messageReceived" % (update.message.from_user.username, update.message.from_user.id))
                 update.message.reply_text(reply_text)
 
-        if user_data['active']
+        if user_data['active']:
             message = update.message
             user = message.from_user
+            chat_id = message.chat.id
+            user_id = update.message.from_user.id
+            logger.debug("User_id %s" % user_id)
             MDB.active.update(
-                {'_id':message.chat.id},
+                {'_id':chat_id},
                 {'$set': {
-                    {'username':user.username},
-                    {'name':user.first_name + " " + user.last_name},
-                    {'id':user.id}
+                    'username':user.username,
+                    'name':user.first_name + " " + user.last_name,
+                    'id' : user_id
                     },
                  '$push': {
-                    {'log': message.message_id}
+                    'log': message.message_id,
                     }               
-                })
-            list_of_chats = MDB.active.find('_id':)
-            forwardToAll(bot, )
-        elif user_data['reply_to']
+                }, upsert=True)
+            list_of_chats = MDB.active.find({'_id':chat_id})
+            logger.debug("List of chats find results %s" % list_of_chats)
+            if list_of_chats.count() > 0:
+                list_of_chats = list_of_chats.next()
+                if not 'forward_to' in list_of_chats:
+                    MDB.active.update({'_id':chat_id},{'$set':{'forward_to':[]}})
+                else:
+                    list_of_chats = list_of_chats['forward_to']
+
+            forwardToAll(bot, list_of_chats, chat_id, message.message_id)
+
+        elif user_data['reply_to']:
+            message = update.message
+            user = message.from_user
+            list_of_chats = MDB.active.find({'_id':user_data['reply_to']}).next()['forward_to']
+            sendToAll(bot, message, list_of_chats, user_data['reply_to'])
 
 
 def callbackResponseHandler(bot, update, user_data):
-    logger.debug("callbackResponseHandler %s" % (update.callback_query))
+    #logger.debug("callbackResponseHandler %s" % (update.callback_query))
 
     query = update.callback_query
     qdata = query.data
@@ -281,6 +303,7 @@ def callbackResponseHandler(bot, update, user_data):
     chat_id = query.message.chat_id
     user_id = query.from_user.id
     result = MDB.callback_data.find({'_id':user_id}).next()
+    #blankKeyboard = InlineKeyboardMarkup([[InlineKeyboardButton("Enjoy", callback_data='-1')]])
 
     # Long list of choices for the inlinebutton responses
     if result['reason'] == 'admin_initial':
@@ -289,6 +312,11 @@ def callbackResponseHandler(bot, update, user_data):
             reply_text = 'Anything you send to this bot will be considered feedback. We recommend starting with what you would like to provide feedback for.\n'
             reply_text = reply_text + "Hitting /cancel will take you back to the initial options."
             user_data['active'] = True
+            user_data['reply_to'] = None
+            bot.editMessageText(text=reply_text,
+                                chat_id=chat_id,
+                                message_id=message_id)
+            MDB.callback_data.remove({'_id':user_id})
         # Means they chose to answer feedback
         elif qdata == '1':
             reply_text = "Which User would you like to give feedback too?"
@@ -296,22 +324,76 @@ def callbackResponseHandler(bot, update, user_data):
             mongoData = dict()
             keyboard = list()
             for i in range(0,len(userlist)):
-                keyboard.append( [InlineKeyboardButton(chats[i][0], callback_data=str(i))] )
-                mongoData[str(i)] = {'chosen':userlist[i][1]}
-            mongoData['reason':'setting_user']
+                keyboard.append( [InlineKeyboardButton(userlist[i][0], callback_data=str(i))] )
+                mongoData[str(i)] = {'chosen':userlist[i][1],'name':userlist[i][0]}
+            mongoData['reason'] = 'setting_user'
             reply_markup = InlineKeyboardMarkup(keyboard)
             bot.editMessageText(text=reply_text,
                                 chat_id=chat_id,
                                 message_id=message_id,
                                 reply_markup=reply_markup)
             MDB.callback_data.update({ '_id' : user_id }, mongoData)
+    elif result['reason'] == 'setting_user':
+        choice = result[qdata]
+        reply_text = "You are now replying to %s.\n" % choice['name']
+        reply_text += "Type /cancel to stop and restart."
+        user_data['reply_to'] = choice['chosen']
+        MDB.active.update({'_id':choice['chosen']},{'$push':{'forward_to':chat_id}})
+        result = MDB.active.find({'_id':choice['chosen']})
+        if result.count() > 0:
+            result = result.next()
+            chatlog = result['log']
+        else:
+            chatlog = []
+        keyboard = [[InlineKeyboardButton('Forward All past messages',callback_data='0')]]
+        chatlength = len(chatlog)
+        if chatlength > 50:
+            keyboard = [[InlineKeyboardButton('Forward last 50 messages',callback_data = '1')]]
+        if chatlength > 25:
+            keyboard.append([InlineKeyboardButton('Forward last 25 messages', callback_data = '2')])
+        if chatlength > 10:
+            keyboard.append([InlineKeyboardButton('Forward last 10 messages', callback_data = '3')])
+        mongoData = dict()
+        mongoData['reason'] = 'forward_messages'
+        mongoData['0'] = -1
+        mongoData['1'] = 50
+        mongoData['2'] = 25
+        mongoData['3'] = 10
+        logger.debug("Editing text for a message.")
+        bot.editMessageText(text=reply_text,
+                            chat_id=chat_id,
+                            message_id=message_id,
+                            reply_markup=InlineKeyboardMarkup(keyboard))
+        MDB.callback_data.update({ '_id' : user_id }, mongoData)
+        
+    elif result['reason'] == 'forward_messages':
+        logger.debug("Forwarding messages from %s's history." % query.from_user.username)
+        log = MDB.active.find({'_id':user_data['reply_to']}).next()
+        logger.debug("active data %s" % log)
+        log = log['log']
+        logger.debug("Messages %s" % log)
+        if qdata == '0':
+            for message in log:
+                bot.forward_message(chat_id = chat_id,
+                                    from_chat_id = user_data['reply_to'],
+                                    message_id = message)
+        else:
+            count = result[qdata]
+            for message in log[-count:]:
+                bot.forward_message(chat_id = chat_id,
+                                    from_chat_id = user_data['reply_to'],
+                                    message_id = message)
+        logger.debug("Editing text for a message.")
+        bot.editMessageText(text='Enjoy',
+                            chat_id=chat_id,
+                            message_id=message_id)
 
 
     
 
 # A utility function, this is what is called when the job created in main runs
 def updateChatList(bot, job):
-    logger.debug("-----------------------updateChatList--------------------")
+    logger.debug("-----------------------updatedChatList--------------------")
     logger.info("Updating the chat list")
     results = MDB.groups.find()
     for doc in results:
@@ -349,6 +431,12 @@ def startFromCLI():
     MDB = MCLIENT[args.MongoDB]
 
 def main():
+    try:
+        serverInfo = MCLIENT.server_info()
+        logger.info("Connected to Mongo Server: %s." % serverInfo)
+    except:
+        logger.error("Could not connect to the Mongo Server.")
+        raise
     updater = Updater(AUTHTOKEN)
 
     dp = updater.dispatcher
@@ -365,6 +453,9 @@ def main():
     dp.add_error_handler(error)
 
     updater.start_polling()
+
+    updateAdmins = Job(updateChatList, 60*15)
+    updater.job_queue.put(updateAdmins, next_t=0)
 
     updater.idle()
 
