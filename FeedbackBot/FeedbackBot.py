@@ -19,6 +19,7 @@ logger.setLevel(logging.DEBUG)
 AUTHTOKEN = None
 MCLIENT = None
 MDB = None
+INFOTEXT = None
 
 # Utility functions
 # Returns the list of chats that a user is admin of.
@@ -63,7 +64,7 @@ def start(bot, update, user_data):
             update.message.reply_text(reply_text, reply_markup=reply_markup)
             user_data['active'] = False
         else: 
-            reply_text="Hello %s, anything you send to this bot will alert an admin, they should reply quickly.\n"
+            reply_text="Hello %s, anything you send to this bot will alert an admin, they should reply quickly.\n" % update.message.from_user.username
             reply_text=reply_text + "We would recommend starting with what you would like to provide feedback for."
             update.message.reply_text(reply_text)
             mongoData = dict()
@@ -79,6 +80,8 @@ def start(bot, update, user_data):
 
 def help(bot, update, user_data, chat_data):
     logger.debug("User %s (%s) called help." % (update.message.from_user.username, update.message.from_user.id))
+    if update.message.chat.type == 'private':
+        update.message.reply_text("If this appears to be acting weird, send /cancel to reset the bot.\n This bot was created by @YTKileroy.")
 
 def addGroup(bot, update, chat_data):
     logger.debug('addGroup')
@@ -238,11 +241,11 @@ def messageReceived(bot, update, user_data):
             user_data['active']=True
             if getChatsAdmining(update.message.from_user.id, update.message.from_user.username):
                 reply_text = "There was a server reset for this bot. You were previously replying to:\n"
-                results = MDB.active.find({'forward_to' : {'$elemMatch':update.message.chat.id}})
+                results = MDB.active.find({'forward_to' : update.message.chat.id})
                 #repairing things
                 if results.count() > 1:
                     MDB.active.update_many(
-                        {'forward_to' : {'$elemMatch':update.message.chat.id}},
+                        {'forward_to' : update.message.chat.id},
                         {'$pull':{'forward_to':update.message.chat.id}})
                     reply_text += "None\n Type /cancel to restart or if you would like to give feedback, start typing."
                 elif results.count() == 0:
@@ -410,25 +413,30 @@ def updateChatList(bot, job):
         except:
             logger.info("Other error when checking %s (%s), check networking" % (doc['title'],doc['_id']))
 
+def info(bot, update):
+    update.message.reply_text(INFOTEXT)
+
 
 def error(bot, update, error):
     logger.warn('Update "%s" cause error "%s"' %(update, error))
 
 
 def startFromCLI():
-    global AUTHTOKEN, MCLIENT, MDB
+    global AUTHTOKEN, MCLIENT, MDB, INFOTEXT
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
-    parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], help='Logging level for the logger, default = debug')
+    parser.add_argument('-l','--llevel', default='info', choices=['debug','info','warn','none'], help='Logging level for the logger, default = info')
     logLevel = {'none':logging.NOTSET,'info':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
     parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connection and auth")
     parser.add_argument('-mdb','--MongoDB', default='feedbackbot', help="The MongoDB Database that this will use")
+    parser.add_argument('-i','--InfoText',default=" ", help='A "quoted" string containing a bit of text that will be displayed when /info is called')
     args = parser.parse_args()
 
     logger.setLevel(logLevel[args.llevel])
     AUTHTOKEN = args.auth
     MCLIENT = MongoClient(args.MongoURI)
     MDB = MCLIENT[args.MongoDB]
+    INFOTEXT = args.InfoText + "\n\nBot created by @YTKileroy"
 
 def main():
     try:
@@ -444,6 +452,7 @@ def main():
     dp.add_handler(CommandHandler('start',start, pass_user_data=True))
     dp.add_handler(CommandHandler('cancel',start, pass_user_data=True))
     dp.add_handler(CommandHandler('help',help, pass_user_data=True, pass_chat_data=True))
+    dp.add_handler(CommandHandler('info',info))
 
     dp.add_handler(CallbackQueryHandler(callbackResponseHandler, pass_user_data=True))
 
