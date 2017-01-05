@@ -10,7 +10,7 @@ This bot will act as a middle man for a group to provide feedback for a chat(s) 
 * MongoDB version 3.4 or later
 * Python 3.x
 * python-telegram-bot
-* mongopy
+* pymongo
 
 ## Starting the bot
 
