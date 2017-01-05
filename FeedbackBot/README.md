@@ -11,3 +11,7 @@ This bot will act as a middle man for a group to provide feedback for a chat(s) 
 * Python 3.x
 * python-telegram-bot
 * mongopy
+
+## Starting the bot
+
+You need to call the bot and pass in the auth key you received from @botfather on telegram
