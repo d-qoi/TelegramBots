@@ -10,3 +10,16 @@ or similar that return a message, will return the message that the bot sent.
 
 This is very useful in the case where you will want to edit that message, or something.
 '''
+
+
+# Checks to see if a command is a valid command for the bot, aka @botname exists or doesn't
+def checkValidCommand(text, username):
+    text = text.split()[0]
+    try:
+        at = text.index('@')+1
+        if text[at:] == username:
+            return True
+        return False
+    except ValueError:
+        return True
+        

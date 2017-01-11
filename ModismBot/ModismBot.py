@@ -7,7 +7,7 @@
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 from random import choice
-from pymongo import MongoClient
+from pymongo import MongoClient, ReturnDocument
 import logging
 import argparse
 
@@ -28,6 +28,17 @@ args = parser.parse_args()
 mClient = MongoClient(args.MongoURI)
 mDatabase = mClient[args.MongoDB]
 mCollection = mDatabase.groups
+
+# Checks to see if a command is a valid command for the bot, aka @botname exists or doesn't
+def checkValidCommand(text, username):
+    text = text.split()[0]
+    try:
+        at = text.index('@')+1
+        if text[at:] == username:
+            return True
+        return False
+    except ValueError:
+        return True
 
 def start(bot, update):
     logger.debug('User "%s (%s)" /start' % (update.message.from_user.username, update.message.from_user.id))
@@ -52,12 +63,21 @@ def receiveMessage(bot, update):
             logger.debug("Admins of %s: %s" % (update.message.chat.title, str(adminUsernames)))
             #logger.debug("All Members Are Admins: %i" % (update.message.chat.all_members_are_admins))
             logger.debug("%s in %s sent: %s" % (update.message.from_user.username, update.message.chat.title, update.message.text))
-            mCollection.find_one_and_update({'_id':update.message.chat.id},{'$inc' : {'count':1}, '$push' : {"messages":update.message.message_id}}, upsert=True)
-
-
+            mCollection.update({'_id':update.message.chat.id},
+                                {'$inc' : {'count':1}, 
+                                 '$push' : 
+                                    {"messages":
+                                        {"$each":[update.message.message_id],
+                                        "$slice":-4000}}}, 
+                                upsert=True)
+            
 
 def modism(bot, update):
     logger.debug("User %s (%s) in chat %s (%s) called modism." % (update.message.from_user.username, update.message.from_user.id, update.message.chat.title, update.message.chat.id))
+    
+    if not checkValidCommand(update.message.text, bot.username):
+        return
+
     findRes = mCollection.find({'_id':update.message.chat.id})
     if findRes.count() == 0:
         update.message.reply_text("The message list is empty, this bot was probably restarted.")
@@ -68,6 +88,10 @@ def modism(bot, update):
         update.message.reply_text("This bot doesn't work if all members are admins.")
 
 def modismStats(bot, update):
+
+    if not checkValidCommand(update.message.text, bot.username):
+        return
+
     logger.debug("User %s (%s) in chat %s (%s) called modismStats." % (update.message.from_user.username, update.message.from_user.id, update.message.chat.title, update.message.chat.id))
     findRes = mCollection.find({'_id':update.message.chat.id})
     if findRes.count() > 0:
