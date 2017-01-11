@@ -84,10 +84,12 @@ def modism(bot, update):
         update.message.reply_text("The message list is empty, this bot was probably restarted.")
     elif update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins:
         data = findRes.next()['messages']
-        #mID = 
+        mID = choice(data)
         try:
-            bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = choice(data))
+            bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = mID)
         except TelegramError:
+            mCollection.update({'_id':update.message.chat.id},{'$pull':{'messages':mID}})
+            logger.debug("Removeing deleted message and recalling.")
             modism(bot, update)
 
     else:
