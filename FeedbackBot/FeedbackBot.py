@@ -233,6 +233,18 @@ def sendToAll(bot, message, list_of_chats, user_chat_id):
     MDB.active.update({'_id':user_chat_id},
                       {'$push':{'log':newMessage.message_id}})
 
+def alertAdmins(bot, username):
+    admins = []
+    for group in MDB.groups.find():
+        admins += group['admins']
+    admins = set(admins)
+    for admin in admins:
+        try:
+            bot.send_message(chat_id=admin,
+                            text="%s is sending feedback, send /cancel to select and respond to them." % username)
+        except TelegramError:
+            logger.debug("Not all admins are interacting with the bot.")
+
 def messageReceived(bot, update, user_data):
 
     if update.message.chat.type == 'private':
@@ -255,12 +267,14 @@ def messageReceived(bot, update, user_data):
                     reply_to = results['_id']
                     reply_to_name = results['name']
                     reply_text += reply_to_name
-                    reply_text += '\nYou should have been forwarded any messages they sent, restart with /cancel if you would like to select another user.'
+                    reply_text += '\nThere may be message you haven\'t received, hit /cancel and select this user again to receive them'
                     user_data['active']=False
                     user_data['reply_to'] = reply_to
                 else:
                     logger.warn("User %s (%s) managed to break the database if statement in messageReceived" % (update.message.from_user.username, update.message.from_user.id))
                 update.message.reply_text(reply_text)
+            else:
+                messageReceived(bot, update, user_data)
 
         if user_data['active']:
             message = update.message
@@ -268,7 +282,7 @@ def messageReceived(bot, update, user_data):
             chat_id = message.chat.id
             user_id = update.message.from_user.id
             logger.debug("User_id %s" % user_id)
-            MDB.active.update(
+            created = MDB.active.update(
                 {'_id':chat_id},
                 {'$set': {
                     'username':user.username,
@@ -279,6 +293,10 @@ def messageReceived(bot, update, user_data):
                     'log': message.message_id,
                     }               
                 }, upsert=True)
+            logger.debug("Message Received created? %s" % 'upserted' in created)
+            if 'upserted' in created:
+                 alertAdmins(bot, user.first_name + " " + user.last_name)
+
             list_of_chats = MDB.active.find({'_id':chat_id})
             logger.debug("List of chats find results %s" % list_of_chats)
             if list_of_chats.count() > 0:
@@ -292,9 +310,12 @@ def messageReceived(bot, update, user_data):
 
         elif user_data['reply_to']:
             message = update.message
-            user = message.from_user
-            list_of_chats = MDB.active.find({'_id':user_data['reply_to']}).next()['forward_to']
-            sendToAll(bot, message, list_of_chats, user_data['reply_to'])
+            #user = message.from_user
+            try:
+                list_of_chats = MDB.active.find({'_id':user_data['reply_to']}).next()['forward_to']
+                sendToAll(bot, message, list_of_chats, user_data['reply_to'])
+            except TelegramError:
+                update.message.reply_text("This session may have been resolved, use /cancel to select another user.")
 
 
 def callbackResponseHandler(bot, update, user_data):
@@ -341,7 +362,7 @@ def callbackResponseHandler(bot, update, user_data):
         reply_text = "You are now replying to %s.\n" % choice['name']
         reply_text += "Type /cancel to stop and restart."
         user_data['reply_to'] = choice['chosen']
-        MDB.active.update({'_id':choice['chosen']},{'$push':{'forward_to':chat_id}})
+        MDB.active.update({'_id':choice['chosen']},{'$addToSet':{'forward_to':chat_id}})
         result = MDB.active.find({'_id':choice['chosen']})
         if result.count() > 0:
             result = result.next()
@@ -392,7 +413,26 @@ def callbackResponseHandler(bot, update, user_data):
                             message_id=message_id)
 
 
-    
+def resolve(bot, update, user_data):
+    if update.message.chat.type == 'private':
+        logger.info("User %s (%s) resolved a chat." % (update.message.from_user.username, update.message.from_user.id))
+        try:
+            if user_data['reply_to']:
+                logger.info("They are an admin.")
+                msg = update.message.reply_text("This session has been resolved.")
+                list_of_chats = MDB.active.find({'_id':user_data['reply_to']}).next()['forward_to']
+                sendToAll(bot, msg, list_of_chats, user_data['reply_to'])
+                MDB.active.remove({"_id":user_data['reply_to']})
+
+            elif user_data['active']:
+                logger.info("They are a user.")
+                msg = update.message.reply_text("This session has been resolved by the user.")
+                list_of_chats = MDB.active.find({'_id':update.message.chat.id}).next()['forward_to']
+                forwardToAll(bot, list_of_chats, update.message.chat.id, msg.message_id)
+                MDB.active.remove({"_id": update.message.chat.id})
+        except KeyError:
+            update.message.reply_text("Please send /start.")
+
 
 # A utility function, this is what is called when the job created in main runs
 def updateChatList(bot, job):
@@ -426,7 +466,7 @@ def startFromCLI():
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='info', choices=['debug','info','warn','none'], help='Logging level for the logger, default = info')
-    logLevel = {'none':logging.NOTSET,'info':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
+    logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
     parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connection and auth")
     parser.add_argument('-mdb','--MongoDB', default='feedbackbot', help="The MongoDB Database that this will use")
     parser.add_argument('-i','--InfoText',default=" ", help='A "quoted" string containing a bit of text that will be displayed when /info is called')
@@ -451,6 +491,7 @@ def main():
 
     dp.add_handler(CommandHandler('start',start, pass_user_data=True))
     dp.add_handler(CommandHandler('cancel',start, pass_user_data=True))
+    dp.add_handler(CommandHandler('resolve',resolve, pass_user_data=True))
     dp.add_handler(CommandHandler('help',help, pass_user_data=True, pass_chat_data=True))
     dp.add_handler(CommandHandler('info',info))
 
