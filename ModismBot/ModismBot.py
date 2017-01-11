@@ -6,6 +6,7 @@
 
 
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import TelegramError
 from random import choice
 from pymongo import MongoClient, ReturnDocument
 import logging
@@ -83,7 +84,12 @@ def modism(bot, update):
         update.message.reply_text("The message list is empty, this bot was probably restarted.")
     elif update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins:
         data = findRes.next()['messages']
-        bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = choice(data))
+        #mID = 
+        try:
+            bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = choice(data))
+        except TelegramError:
+            modism(bot, update)
+
     else:
         update.message.reply_text("This bot doesn't work if all members are admins.")
 
