@@ -88,7 +88,7 @@ def modism(bot, update):
         try:
             bot.forwardMessage(chat_id = update.message.chat.id, from_chat_id = update.message.chat.id, message_id = mID)
         except TelegramError:
-            mCollection.update({'_id':update.message.chat.id},{'$pull':{'messages':mID}})
+            mCollection.update({'_id':update.message.chat.id},{'$pull':{'messages':mID}, '$inc':{'count':-1}})
             logger.debug("Removeing deleted message and recalling.")
             modism(bot, update)
 
