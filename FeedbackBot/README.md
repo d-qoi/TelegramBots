@@ -14,9 +14,13 @@ This bot will act as a middle man for a group to provide feedback for a chat(s) 
 
 ## Starting the bot
 
-You need to call the bot and pass in the auth key you received from @botfather on telegram
+You need to call the bot and pass in the auth key you received from @botfather on telegram.
+
 To set a custom info message, pass:
+
   `-i "This is the message (in quotes) called when /info is called in chat"`
+  
+  
 --help explains the rest of the arguments.
 
 ## Commands
