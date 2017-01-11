@@ -81,7 +81,26 @@ def start(bot, update, user_data):
 def help(bot, update, user_data, chat_data):
     logger.debug("User %s (%s) called help." % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == 'private':
-        update.message.reply_text("If this appears to be acting weird, send /cancel to reset the bot.\n This bot was created by @YTKileroy.")
+        reply_text = '''
+
+Welcome to this bot!
+There are a few useful commands:
+
+
+    /start: Will restart the bot
+
+    /cancel: Will also restart the bot, will let chat admins choose another thread to respond to.
+
+    /resolve: Will resolve the current thread and remove it from the list.
+
+    /help: Displays this message.
+
+    /info: Will display info text.
+
+If this bot appears to be acting weird or not responding, send /start or /cancel.
+This bot was created by @YTKileroy
+        '''
+        update.message.reply_text(reply_text)
 
 def addGroup(bot, update, chat_data):
     logger.debug('addGroup')
