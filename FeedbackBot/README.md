@@ -15,11 +15,15 @@ This bot will act as a middle man for a group to provide feedback for a chat(s) 
 ## Starting the bot
 
 You need to call the bot and pass in the auth key you received from @botfather on telegram
+To set a custom info message, pass:
+  `-i "This is the message (in quotes) called when /info is called in chat"`
+--help explains the rest of the arguments.
 
 ## Commands
 * /start or /cancel: Restarts the current instance, and returns to the initial prompt. Use when the bot is acting up.
 * /info: Prints info, can be set through initial arguments
 * /help: Prints basic help
+* /resolve: Removes the current thread, callable by user or admin.
 
 ## How to use this bot
 
