@@ -466,7 +466,7 @@ def updateChatList(bot, job):
             MDB.groups.find_one_and_update({'_id':doc['_id']},
                                            { '$set' : {'title':chat.title, "admins":admins}})
         except TelegramError as te:
-            logger,info("Removing %s (%s) from the database, it is not responding, re-add the bot if this is incorrect." % (doc['title'],doc['_id']))
+            logger.info("Removing %s (%s) from the database, it is not responding, re-add the bot if this is incorrect." % (doc['title'],doc['_id']))
             MDB.groups.remove({'_id':doc['_id']})
 
         except:

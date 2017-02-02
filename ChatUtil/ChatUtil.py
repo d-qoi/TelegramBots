@@ -9,15 +9,13 @@ import argparse
 import time
 import datetime
 
+import eventCreate
 
 from pymongo import MongoClient
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, RegexHandler, ConversationHandler
 
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 # Global variables
 authToken = None
@@ -53,7 +51,7 @@ def createUserDict(from_user):
     userDict = dict()
     userDict['username'] = from_user.username
     userDict['name'] = from_user.first_name + " " + from_user.last_name
-    userDict['_id'] = from_user.id
+    userDict['id'] = from_user.id
     userDict['chatID'] = from_user.id # Placeholder till they send /start to the bot
 
 
@@ -77,7 +75,7 @@ def createChatDoc(bot, update):
             newGroup['motd'] = "Here is the MOTD"
             newGroup['custom_commands'] = [{'command':'example','text':'This is a custom message, you can set a few of these'}]
             newGroup['activePolls'] = list()
-            newGroup['food']
+            newGroup['food'] = list()
             newGroup['events'] = list()
             newGroup['users'] = [createUserDict(update.message.from_user)]
             mDatabase.groups.insert(newGroup) 
@@ -115,138 +113,6 @@ def start(bot, update):
 
 def help(bot, update):
     pass
-
-
-
-### Commands for creating an event.
-
-def isTimeString(input):
-    try:
-        time.strptime(input, '%H:%M')
-        return True
-    except ValueError:
-        return False
-
-def isDateString(input):
-    try:
-        eventDate = time.strptime(input, '%m/%d/%Y')
-        #print(eventDate)
-        now = datetime.datetime.now()
-        currDate = time.strptime('%d/%d/%d' %(now.month, now.day, now.year), '%m/%d/%Y')
-        #print(currDate)
-        return eventDate >= currDate
-    except ValueError:
-        #print('failure')
-        return False
-
-def createEventDoc(forChatTitle, user_data, username):
-    result = mDatabase.groups.find({"title":forChatTitle})
-    if result.count() == 1:
-        logger.info("Creating Event for %s" % forChatTitle)
-        newEvent = dict()
-        newEvent['name'] = user_data['Name']
-        newEvent['description'] = user_data['Description']
-        newEvent['time'] = user_data['Time']
-        newEvent['place'] = user_data['Place']
-        newEvent['date'] = newEvent['Date']
-        newEvent['creator'] = username
-        mDatabase.groups.update({'title':forChatTitle},{'$push':{'events':newEvent}})
-        logger.debug("Created Event: %s" % (str(newEvent)))
-        return True
-    else:
-        return False
-
-def eventStartEditing(bot, update, user_data):
-    if checkTypePrivate(update):
-        logger.info("%s (%s) is creating an event." % (update.message.from_user.username, update.message.from_user.id))
-
-        #reset all keys, and set them.
-        for key in ['Name','Time','Date','Description','Place','Group']:
-            user_data[key] = None
-
-        # Set up the keyboard
-        reply_keyboard = [['Name', 'Time', 'Date'],
-                          ['Group','Place'],
-                          ['Description']]
-
-        # If the user has answered all questions, add 'done', otherwise just add 'cancel'
-        if all (key in user_data for key in ['Name','Time','Date','Description','Place','Group']):
-            reply_keyboard.append(['Cancel','Done'])
-        else:
-            reply_keyboard.append(['Cancel'])
-
-        # Make the markup, needs to be one time because users need to reply to this thing.
-        markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
-        reply_text = "Please select which you would like to edit, once you've entered something for all of these, you will be able to create the event."
-
-        update.message.reply_text(reply_text, reply_markup=markup)
-
-        #We are prompting them to select an event, need to handle that next
-        return EVENTSELECT
-    else:
-        update.message.reply_text("Please message this bot directly to create an event.")
-        return ConversationHandler.END
-
-
-def eventSelectEditing(bot, update, user_data):
-
-    user_data[user_data['editing_choice']] = update.message.text
-    reply_text = ""
-
-    if user_data['editing_choice'] == 'Time' and not isTimeString(update.message.text):
-        reply_text = "Your time string is not formatted correctly, please try again.\n\n"
-        user_data['Time'] = None
-    elif user_data['editing_choice'] == 'Date' and not isDateString(update.message.text):
-        reply_text = 'You Date string is not formatted correctly (m/d/20xx), please try again.\n\n'
-        user_data['Date'] = None
-
-    reply_keyboard = [['Name', 'Time', 'Date'],
-                          ['Group','Place'],
-                          ['Description']]
-
-    if all (key in user_data for key in ['Name','Time','Date','Description','Place','Group']):
-        reply_keyboard.append(['Cancel','Done'])
-    else:
-        reply_keyboard.append(['Cancel'])
-    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
-    reply_text += "Please select which you would like to edit, once you've entered something for all of these, you will be able to create the event."
-    update.message.reply_text(reply_text, reply_markup=markup)
-    return EVENTSELECT
-
-def eventPromptTyping(bot, update, user_data):
-    # Which did they choose! Store it for later use
-    userChoice = update.message.text
-    user_data['editing_choice'] = userChoice
-
-    # If they managed to select done
-    if userChoice == 'Done':
-        if createEventDoc(user_data['Group'], user_data, update.message.from_user.username):
-            reply_text = "Created the event!"
-            update.message.reply_text(reply_text)
-            return ConversationHandler.END
-
-    elif userChoice == 'Cancel':
-        reply_text = "Canceled."
-        for key in ['Name','Time','Date','Description','Place','Group','editing_choice']:
-            user_data[key] = None
-            update.message.reply_text(reply_text)
-            return ConversationHandler.END
-
-    elif userChoice == 'Time':
-        reply_text = "Please send me the Time of the event in HH:MM format."
-
-    elif userChoice == 'Date':
-        reply_text = "Please send me the Date of this event in MM/DD/YY"
-    else:
-        reply_text = "Please send me the %s of the event." % userChoice.lower()
-    update.message.reply_text(reply_text)
-
-def eventCancel(bot, update, user_data):
-    reply_text = "Canceled."
-    for key in ['Name','Time','Date','Description','Place','Group','editing_choice']:
-        user_data[key] = None
-    update.message.reply_text(reply_text)
-    return ConversationHandler.END
 
 
 
@@ -300,8 +166,11 @@ def pollAnswersReceived(bot, update, user_data):
 
 def pollAskWhichGroup(bot, update, user_data):
     result = mDatabase.groups.find({'users':update.message.from_user.id})
+    keyboard = None
     if result.count():
-        for chat in 
+        keyboard = []
+        for chat in result:
+            keyboard.append()
 
 def pollCreatePoll(bot, update, user_data):
     pass
@@ -436,34 +305,34 @@ def main():
     updater.start_polling()
     updater.idle()
 
-def startFromCLI():
-    global mDatabase, mongoURI, authToken
-    # Specifying a lot of arguments, Don't want to have to deal with config files, maybe I will later for other things
-    parser = argparse.ArgumentParser()
-    parser.add_argument('auth', type=str, 
-                        help="The Auth Token given by Telegram's @botfather")
-    parser.add_argument('-muri','--mongoURI', default='mongodb://localhost:27017', 
-                        help="The MongoDB URI for connection and auth")
-    parser.add_argument('-mDB', '--mongoDB', default="ChatUtil",
-                        help="The database for MongoDB, default is ChatUtil")
-    parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
-                        help='Logging level for the logger, default = debug')
-
-    # This is not somehting that needs to be added, but it is useful for some things I think.
-    logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING} 
-    args = parser.parse_args()
-
-
-    logger.setLevel(logLevel[args.llevel])
-
-    mDatabase = args.mongoDB
-    mongoURI = args.mongoURI
-    logger.info("MongoDB URI: %s" % (mongoURI))
-    logger.info("MongoDB DB: %s" % (mDatabase))
-    authToken = args.auth
-    logger.debug("TelegramAuth: %s" % (authToken))
-
-if __name__ == '__main__':
-    startFromCLI()
-    main()
+    def startFromCLI():
+        global mDatabase, mongoURI, authToken
+        # Specifying a lot of arguments, Don't want to have to deal with config files, maybe I will later for other things
+        parser = argparse.ArgumentParser()
+        parser.add_argument('auth', type=str, 
+                            help="The Auth Token given by Telegram's @botfather")
+        parser.add_argument('-muri','--mongoURI', default='mongodb://localhost:27017', 
+                            help="The MongoDB URI for connection and auth")
+        parser.add_argument('-mDB', '--mongoDB', default="ChatUtil",
+                            help="The database for MongoDB, default is ChatUtil")
+        parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
+                            help='Logging level for the logger, default = debug')
+    
+        # This is not somehting that needs to be added, but it is useful for some things I think.
+        logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING} 
+        args = parser.parse_args()
+    
+    
+        logger.setLevel(logLevel[args.llevel])
+    
+        mDatabase = args.mongoDB
+        mongoURI = args.mongoURI
+        logger.info("MongoDB URI: %s" % (mongoURI))
+        logger.info("MongoDB DB: %s" % (mDatabase))
+        authToken = args.auth
+        logger.debug("TelegramAuth: %s" % (authToken))
+    
+    if __name__ == '__main__':
+        startFromCLI()
+        main()
 
