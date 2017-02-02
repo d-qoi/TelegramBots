@@ -13,3 +13,5 @@ It will include the following features
 * Schedule for making events
 * A few custom commands that will relay text
 * A repeat message
+
+# No longer developing this version of the bot, see version 2
