@@ -25,10 +25,10 @@ cwd = getcwd()
 
 
 def start(bot, update):
-    update.message.reply_text("Start!")
+    update.message.reply_text("Welcome to a Speech To Text bot! This bot will take any voice message sent to it and will try to translate it to text!")
 
 def help(bot, update):
-    update.message.reply_text("Help!")
+    update.message.reply_text("Send me a voice message, forward me a voice message, add me to groups! I will try to transcribe anything sent!")
 
 # def inlineQuery(bot, update):
 #     query = update.inline_query
@@ -40,7 +40,7 @@ def help(bot, update):
 #     logger.info(query)
 
 def receiveMessage(bot, update):
-    logger.debug("Received a message")
+    logger.info("Received a message")
     if update.message.voice:
         logger.debug("Is a voice message")
         voiceID = update.message.voice.file_id
@@ -51,6 +51,7 @@ def receiveMessage(bot, update):
                 logger.debug("Got the file")
             except TelegramError:
                 logger.warn("Failed to get a file.")
+                raise
                         
         
             file.download(inFile.name)
@@ -64,17 +65,23 @@ def receiveMessage(bot, update):
             with sr.AudioFile(outFile) as audioFile:
                 audio = r.record(audioFile)
                 logger.debug("Attempting to translate")
+                reply_text = 'Something very bad happened.'
                 try:
                     recognized = r.recognize_google(audio, show_all=True)
                     logger.debug("Translated")
+                    alts = sorted(recognized['alternative'], key=lambda conf: conf['confidence'], reverse=True)
+                    reply_text = "Confidence: %s\nText:\n%s"%(alts[0]['confidence'], alts[0]['transcript'])
+                   
                 except sr.UnknownValueError:
                     print("Google Speech Recognition could not understand audio")
+                    reply_text = "Something happened."
                 except sr.RequestError as e:
                     print("Could not request results from Google Speech Recognition service; {0}".format(e))
+                    reply_text = "Could not access Google, try again later."
+            
+                update.message.reply_text(reply_text)
         
-        alts = sorted(recognized['alternative'], key=lambda conf: conf['confidence'], reverse=True)
-        reply_text = "Confidence: %s\nText:\n%s"%(alts[0]['confidence'], alts[0]['transcript'])
-        update.message.reply_text(reply_text)
+       
      
 
 def error(bot, update, error):
