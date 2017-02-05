@@ -22,4 +22,7 @@ def checkValidCommand(text, username):
         return False
     except ValueError:
         return True
+    
+    if not checkValidCommand(update.message.text, bot.username):
+        return
         
