@@ -20,6 +20,7 @@ AUTHTOKEN = None
 MCLIENT = None
 MDB = None
 INFOTEXT = None
+WELCOMETEXT = None
 
 # Utility functions
 # Returns the list of chats that a user is admin of.
@@ -118,6 +119,9 @@ def statusReceived(bot, update):
 
         MDB.groups.update({'_id':chat.id}, newGroup, upsert=True)
         logger.info("Added %s to the group list" % update.message.chat.title)
+        
+    elif update.message.new_chat_member:
+        update.message.reply_text(WELCOMETEXT, quote=False)
 
     elif update.message.left_chat_member and update.message.left_chat_member.username == bot.username:
         MDB.groups.remove({'_id':update.message.chat.id})
@@ -314,7 +318,7 @@ def messageReceived(bot, update, user_data):
                 }, upsert=True)
             logger.debug("Message Received created? %s" % 'upserted' in created)
             if 'upserted' in created:
-                 alertAdmins(bot, user.first_name + " " + user.last_name)
+                alertAdmins(bot, user.first_name + " " + user.last_name)
 
             list_of_chats = MDB.active.find({'_id':chat_id})
             logger.debug("List of chats find results %s" % list_of_chats)
@@ -466,7 +470,8 @@ def updateChatList(bot, job):
             MDB.groups.find_one_and_update({'_id':doc['_id']},
                                            { '$set' : {'title':chat.title, "admins":admins}})
         except TelegramError as te:
-            logger.info("Removing %s (%s) from the database, it is not responding, re-add the bot if this is incorrect." % (doc['title'],doc['_id']))
+            logger.warning("Removing %s (%s) from the database, it is not responding, re-add the bot if this is incorrect." % (doc['title'],doc['_id']))
+            logger.debug("Error received: %s" % (str(te)))
             MDB.groups.remove({'_id':doc['_id']})
 
         except:
@@ -481,7 +486,7 @@ def error(bot, update, error):
 
 
 def startFromCLI():
-    global AUTHTOKEN, MCLIENT, MDB, INFOTEXT
+    global AUTHTOKEN, MCLIENT, MDB, INFOTEXT, WELCOMETEXT
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='info', choices=['debug','info','warn','none'], help='Logging level for the logger, default = info')
@@ -489,6 +494,7 @@ def startFromCLI():
     parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connection and auth")
     parser.add_argument('-mdb','--MongoDB', default='feedbackbot', help="The MongoDB Database that this will use")
     parser.add_argument('-i','--InfoText',default=" ", help='A "quoted" string containing a bit of text that will be displayed when /info is called')
+    parser.add_argument('-w','--WelcomeText', default = 'Welcome! Please PM this bot to give feedback.', help='A "quoted" string containing a bit of text that will be displayed when a user joins.')
     args = parser.parse_args()
 
     logger.setLevel(logLevel[args.llevel])
@@ -496,6 +502,7 @@ def startFromCLI():
     MCLIENT = MongoClient(args.MongoURI)
     MDB = MCLIENT[args.MongoDB]
     INFOTEXT = args.InfoText + "\n\nBot created by @YTKileroy"
+    WELCOMETEXT = args.WelcomeText
 
 def main():
     try:
