@@ -150,7 +150,21 @@ def forwardToAll(bot, list_of_chats, from_chat_id, message_id):
 
 def sendToAll(bot, message, list_of_chats, user_chat_id):
     timeout = 10 #Timeout in seconds, though this might be a good idea, don't think this bot will be hitting this any time soon
-    if Filters.text(message):
+    
+    if Filters.forwarded(message):
+        message_id = message.message_id
+        from_chat = message.forward_from_chat.id
+        for chat in list_of_chats:
+            bot.forward_message(chat_id=chat,
+                                from_chat_id=from_chat,
+                                message_id=message_id,
+                                timeout=timeout)
+        newMessage = bot.forward_message(chat_id=user_chat_id,
+                                from_chat_id=from_chat,
+                                message_id=message_id,
+                                timeout=timeout)
+        
+    elif Filters.text(message):
         for chat in list_of_chats:
             bot.send_message(chat_id=chat,
                              text=message.text,
@@ -252,18 +266,6 @@ def sendToAll(bot, message, list_of_chats, user_chat_id):
                                       latitude=lat,
                                       timeout=timeout)
 
-    elif Filters.forwarded(message):
-        message_id = message.message_id
-        from_chat = message.forward_from_chat.id
-        for chat in list_of_chats:
-            bot.forward_message(chat_id=chat,
-                                from_chat_id=from_chat,
-                                message_id=message_id,
-                                timeout=timeout)
-        newMessage = bot.forward_message(chat_id=user_chat_id,
-                                from_chat_id=from_chat,
-                                message_id=message_id,
-                                timeout=timeout)
     else:
         pass
 
