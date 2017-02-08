@@ -20,6 +20,10 @@ To set a custom info message, pass:
 
   `-i "This is the message (in quotes) called when /info is called in chat"`
   
+To set a custom Welcome message, pass:
+
+  `-w "This is the new welcome message (in quotes). It will be displayed when a user joins"`
+  
   
 --help explains the rest of the arguments.
 
