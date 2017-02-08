@@ -22,6 +22,16 @@ MDB = None
 INFOTEXT = None
 WELCOMETEXT = None
 
+def checkValidCommand(text, username):
+    text = text.split()[0]
+    try:
+        at = text.index('@')+1
+        if text[at:] == username:
+            return True
+        return False
+    except ValueError:
+        return True
+
 # Utility functions
 # Returns the list of chats that a user is admin of.
 def getChatsAdmining(id, username):
@@ -42,6 +52,8 @@ def getChatList():
 
 # User functions
 def start(bot, update, user_data):
+    if not checkValidCommand(update.message.text, bot.username):
+        return
     logger.debug("User %s (%s) called start." % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == "private":
         user_data['active'] = False
@@ -80,6 +92,8 @@ def start(bot, update, user_data):
 
 
 def help(bot, update, user_data, chat_data):
+    if not checkValidCommand(update.message.text, bot.username):
+        return
     logger.debug("User %s (%s) called help." % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == 'private':
         reply_text = '''
@@ -437,6 +451,8 @@ def callbackResponseHandler(bot, update, user_data):
 
 
 def resolve(bot, update, user_data):
+    if not checkValidCommand(update.message.text, bot.username):
+        return
     if update.message.chat.type == 'private':
         logger.info("User %s (%s) resolved a chat." % (update.message.from_user.username, update.message.from_user.id))
         try:
@@ -478,6 +494,8 @@ def updateChatList(bot, job):
             logger.info("Other error when checking %s (%s), check networking" % (doc['title'],doc['_id']))
 
 def info(bot, update):
+    if not checkValidCommand(update.message.text, bot.username):
+        return
     update.message.reply_text(INFOTEXT)
 
 
