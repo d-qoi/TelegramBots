@@ -13,7 +13,6 @@ from telegram.ext import Updater, CommandHandler, Filters, MessageHandler, Callb
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO)
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 # Globals
 AUTHTOKEN = None
@@ -54,7 +53,7 @@ def getChatList():
 def start(bot, update, user_data):
     if not checkValidCommand(update.message.text, bot.username):
         return
-    logger.debug("User %s (%s) called start." % (update.message.from_user.username, update.message.from_user.id))
+    logger.info("User %s (%s) called start." % (update.message.from_user.username, update.message.from_user.id))
     if update.message.chat.type == "private":
         user_data['active'] = False
         user_data['reply_to'] = False
@@ -64,7 +63,7 @@ def start(bot, update, user_data):
         logger.debug("Result of cleanup: %s" % result)
         #logger.debug("Admin of %s" % user_data['admin_of'])
         if admining:
-            reply_text = "Hello @%s! You are an Admin of a few chats! Would you like to give feedback or reply to feedback!" % update.message.from_user.username
+            reply_text = "Hello @%s! You are an Admin! Would you like to give feedback or reply to feedback!" % update.message.from_user.username
             mongoData = {'0':{'chosen':None},
                          '1':{'chosen':None},
                          'reason':'admin_initial'}
@@ -78,7 +77,7 @@ def start(bot, update, user_data):
             user_data['active'] = False
         else: 
             reply_text="Hello %s, anything you send to this bot will alert an admin, they should reply quickly.\n" % update.message.from_user.username
-            reply_text=reply_text + "We would recommend starting with what you would like to provide feedback for."
+            reply_text=reply_text + "We would recommend starting with what you would like to discuss."
             update.message.reply_text(reply_text)
             mongoData = dict()
             mongoData['username'] = update.message.from_user.username
@@ -117,13 +116,11 @@ This bot was created by @YTKileroy
         '''
         update.message.reply_text(reply_text)
 
-def addGroup(bot, update, chat_data):
-    logger.debug('addGroup')
 
 def statusReceived(bot, update):
     logger.debug("Message Received")
     if update.message.new_chat_member and update.message.new_chat_member.username == bot.username:
-        logger.debug("Added To Chat")
+        logger.info("Added To Chat %s (%s)" %(update.message.chat.title, update.message.chat.id))
         newGroup = dict()
         chat = update.message.chat
         #newGroup['_id'] = chat.id
@@ -135,63 +132,128 @@ def statusReceived(bot, update):
         logger.info("Added %s to the group list" % update.message.chat.title)
         
     elif update.message.new_chat_member:
+        logger.info("New member joined the chat.")
         update.message.reply_text(WELCOMETEXT, quote=False)
 
     elif update.message.left_chat_member and update.message.left_chat_member.username == bot.username:
         MDB.groups.remove({'_id':update.message.chat.id})
-        logger.debug("Removing entry for %s" % (update.message.chat.title))
+        logger.info("Removing entry for %s" % (update.message.chat.title))
 
+# When a user sends a message, it is forwarded to everyone with this method.
 def forwardToAll(bot, list_of_chats, from_chat_id, message_id):
     logger.debug("List of chats to forward a message to: %s" % list_of_chats)
+    
+    if not list_of_chats: #If there are no chats to foward to.
+        return
+    
     for chat in list_of_chats:
-        bot.forward_message(chat_id=chat,
-                            from_chat_id=from_chat_id,
-                            message_id=message_id)
-
+        try:
+            bot.forward_message(chat_id=chat,
+                                from_chat_id=from_chat_id,
+                                message_id=message_id)
+        except TelegramError as te:
+            logger.debug("Unable to send message to %s from %s. May want to remove it, or resolve the thread." %(chat, from_chat_id))
+            logger.debug("Error from forward to all: %s" % te)
+            
 def sendToAll(bot, message, list_of_chats, user_chat_id):
     timeout = 10 #Timeout in seconds, though this might be a good idea, don't think this bot will be hitting this any time soon
+    # This is the bulk of the work in this bot.
     
     if Filters.forwarded(message):
         message_id = message.message_id
         from_chat = message.forward_from_chat.id
         for chat in list_of_chats:
-            bot.forward_message(chat_id=chat,
-                                from_chat_id=from_chat,
-                                message_id=message_id,
-                                timeout=timeout)
-        newMessage = bot.forward_message(chat_id=user_chat_id,
-                                from_chat_id=from_chat,
-                                message_id=message_id,
-                                timeout=timeout)
+            try:
+                bot.forward_message(chat_id=chat,
+                                    from_chat_id=from_chat,
+                                    message_id=message_id,
+                                    timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        
+        try:
+            newMessage = bot.forward_message(chat_id=user_chat_id,
+                                             from_chat_id=from_chat,
+                                             message_id=message_id,
+                                             timeout=timeout)
+        # If the user has not responded. Message all of the admins.
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try: #error checking in error checking because bot.sendMessage doesn't work for people who haven't messaged the bot.
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to forward message to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+        
         
     elif Filters.text(message):
         for chat in list_of_chats:
-            bot.send_message(chat_id=chat,
-                             text=message.text,
-                             timeout=timeout)
-        newMessage = bot.send_message(chat_id=user_chat_id,
-                         text=message.text,
-                         timeout=timeout)
+            try:
+                bot.send_message(chat_id=chat,
+                                 text=message.text,
+                                 timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_message(chat_id=user_chat_id,
+                                          text=message.text,
+                                          timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send text message to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+
 
     elif Filters.audio(message):
         audio = message.audio.file_id
         for chat in list_of_chats:
-            bot.send_audio(chat_id=chat,
-                           audio=audio,
-                           timeout=timeout)
-        newMessage = bot.send_audio(chat_id=user_chat_id,
-                       audio=audio,
-                       timeout=timeout)
+            try:
+                bot.send_audio(chat_id=chat,
+                               audio=audio,
+                               timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_audio(chat_id=user_chat_id,
+                                        audio=audio,
+                                        timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send audio message to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+
 
     elif Filters.document(message):
         document = message.document.file_id
         for chat in list_of_chats:
-            bot.send_document(chat_id=chat,
-                              document=document,
-                              timeout=timeout)
-        newMessage = bot.send_document(chat_id=user_chat_id,
-                                       document=document,
-                                       timeout=timeout)
+            try:
+                bot.send_document(chat_id=chat,
+                                  document=document,
+                                  timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_document(chat_id=user_chat_id,
+                                           document=document,
+                                           timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send document to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+
 
     elif Filters.photo(message):
         photo = message.photo[0].file_id
@@ -199,75 +261,149 @@ def sendToAll(bot, message, list_of_chats, user_chat_id):
         if message.caption:
             caption = message.caption
         for chat in list_of_chats:
-            bot.send_photo(chat_id=chat,
-                           photo=photo,
-                           caption=caption,
-                           timeout=timeout)
-        newMessage = bot.send_photo(chat_id=user_chat_id,
-                                    photo=photo,
-                                    caption=caption,
-                                    timeout=timeout)
+            try:
+                bot.send_photo(chat_id=chat,
+                               photo=photo,
+                               caption=caption,
+                               timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_photo(chat_id=user_chat_id,
+                                        photo=photo,
+                                        caption=caption,
+                                        timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send photo to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
 
     elif Filters.sticker(message):
         sticker = message.sticker.file_id
         for chat in list_of_chats:
-            bot.send_sticker(chat_id=chat,
-                             sticker=sticker,
-                             timeout=timeout)
-        newMessage = bot.send_sticker(chat_id=user_chat_id,
-                                      sticker=sticker,
-                                      timeout=timeout)
+            try:
+                bot.send_sticker(chat_id=chat,
+                                 sticker=sticker,
+                                 timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send messages to admin in SendToAll: %s" % te)
+        try:
+            newMessage = bot.send_sticker(chat_id=user_chat_id,
+                                          sticker=sticker,
+                                          timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send sticker to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+                
     elif Filters.voice(message):
         voice = message.voice.file_id
         for chat in list_of_chats:
-            bot.send_voice(chat_id=chat,
-                           voice=voice,
-                           timeout=timeout)
-        newMessage = bot.send_voice(chat_id=user_chat_id,
-                                    voice=voice,
-                                    timeout=timeout)
-
+            try:
+                bot.send_voice(chat_id=chat,
+                               voice=voice,
+                               timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s " % te)
+        try:
+            newMessage = bot.send_voice(chat_id=user_chat_id,
+                                        voice=voice,
+                                        timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send voice message to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+                
     elif Filters.video(message):
         video = message.video.file_id
         for chat in list_of_chats:
-            bot.send_video(chat_id=chat,
-                           video=video,
-                           timeout=timeout)
-        newMessage = bot.send_video(chat_id=user_chat_id,
-                                    video=video,
-                                    timeout=timeout)
+            try:
+                bot.send_video(chat_id=chat,
+                               video=video,
+                               timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_video(chat_id=user_chat_id,
+                                        video=video,
+                                        timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send message to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
 
     elif Filters.contact(message):
         phone_number = message.contact.phone_number
         first_name = message.contact.first_name
         last_name = message.contact.last_name
         for chat in list_of_chats:
-            bot.send_contact(chat_id=chat,
-                             phone_number=phone_number,
-                             first_name=first_name,
-                             last_name=last_name,
-                             timeout=timeout)
-        newMessage = bot.send_contact(chat_id=user_chat_id,
-                                      phone_number=phone_number,
-                                      first_name=first_name,
-                                      last_name=last_name,
-                                      timeout=timeout)
+            try:
+                bot.send_contact(chat_id=chat,
+                                 phone_number=phone_number,
+                                 first_name=first_name,
+                                 last_name=last_name,
+                                 timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unbable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_contact(chat_id=user_chat_id,
+                                          phone_number=phone_number,
+                                          first_name=first_name,
+                                          last_name=last_name,
+                                          timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send contact to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
 
     elif Filters.location(message):
         lat = message.location.latitude
         lon = message.location.longitude
         for chat in list_of_chats:
-            bot.send_location(chat_id=chat,
-                             longitude=lon,
-                             latitude=lat,
-                             timeout=timeout)
-        newMessage = bot.send_location(chat_id=user_chat_id,
-                                      longitude=lon,
-                                      latitude=lat,
-                                      timeout=timeout)
-
+            try:
+                bot.send_location(chat_id=chat,
+                                 longitude=lon,
+                                 latitude=lat,
+                                 timeout=timeout)
+            except TelegramError as te:
+                logger.debug("Unable to send message to admin in sendToAll: %s" % te)
+        try:
+            newMessage = bot.send_location(chat_id=user_chat_id,
+                                          longitude=lon,
+                                          latitude=lat,
+                                          timeout=timeout)
+        except TelegramError as te:
+            logger.debug("Unable to send message to user in sendToAll: %s" % te)
+            for chat in list_of_chats:
+                try:
+                    bot.sendMessage(chat_id=chat,
+                                    text="Unable to send location to user, if this persists, resolve this thread, they may have stopped talking to the bot.")
+                except TelegramError:
+                    pass
+                
     else:
-        pass
+        logger.warning("Message %s not handled in SendToAll")
+        raise TelegramError("No handler for forwarding.")
 
     MDB.active.update({'_id':user_chat_id},
                       {'$push':{'log':newMessage.message_id}})
@@ -281,41 +417,42 @@ def alertAdmins(bot, username):
         try:
             bot.send_message(chat_id=admin,
                             text="%s is sending feedback, send /cancel to select and respond to them." % username)
-        except TelegramError:
+        except TelegramError as te:
             logger.debug("Not all admins are interacting with the bot.")
+            logger.debug("Error in alert Admins: %s" % te)
 
 def messageReceived(bot, update, user_data):
 
     if update.message.chat.type == 'private':
-        # In case there was a reset of this server
+        # In case there was a reset of this server, reset everything, then check to see if they were chatting.
         if not 'active' in user_data and not 'reply_to' in user_data:
             user_data['active']=True
             if getChatsAdmining(update.message.from_user.id, update.message.from_user.username):
                 reply_text = "There was a server reset for this bot. You were previously replying to:\n"
                 results = MDB.active.find({'forward_to' : update.message.chat.id})
                 #repairing things
-                if results.count() > 1:
+                if results.count() > 1: #If their ID was in two chats
                     MDB.active.update_many(
                         {'forward_to' : update.message.chat.id},
                         {'$pull':{'forward_to':update.message.chat.id}})
                     reply_text += "None\n Type /cancel to restart or if you would like to give feedback, start typing."
-                elif results.count() == 0:
+                elif results.count() == 0: # If they weren't replying.
                     reply_text += "None\n Type /cancel to restart or if you would like to give feedback, start typing."
-                elif results.count == 1:
+                elif results.count == 1: # If they were interacting with one user.
                     results = results.next()
                     reply_to = results['_id']
                     reply_to_name = results['name']
                     reply_text += reply_to_name
-                    reply_text += '\nThere may be message you haven\'t received, hit /cancel and select this user again to receive them'
+                    reply_text += '\nThere may be message you haven\'t received, hit /cancel and re-select this user again to receive them'
                     user_data['active']=False
                     user_data['reply_to'] = reply_to
                 else:
                     logger.warn("User %s (%s) managed to break the database if statement in messageReceived" % (update.message.from_user.username, update.message.from_user.id))
                 update.message.reply_text(reply_text)
-            else:
+            else: # They were a regular user, re-start this command now that user_data['active'] is reset.
                 messageReceived(bot, update, user_data)
 
-        if user_data['active']:
+        if user_data['active']: # If they are currently giving feed back.
             message = update.message
             user = message.from_user
             chat_id = message.chat.id
@@ -334,6 +471,7 @@ def messageReceived(bot, update, user_data):
                 }, upsert=True)
             logger.debug("Message Received created? %s" % 'upserted' in created)
             if 'upserted' in created:
+                logger.debug("Created, alerting admins.")
                 alertAdmins(bot, user.first_name + " " + user.last_name)
 
             list_of_chats = MDB.active.find({'_id':chat_id})
@@ -344,14 +482,18 @@ def messageReceived(bot, update, user_data):
                     MDB.active.update({'_id':chat_id},{'$set':{'forward_to':[]}})
                 else:
                     list_of_chats = list_of_chats['forward_to']
-
+                    
             forwardToAll(bot, list_of_chats, chat_id, message.message_id)
 
         elif user_data['reply_to']:
             message = update.message
             #user = message.from_user
             try:
-                list_of_chats = MDB.active.find({'_id':user_data['reply_to']}).next()['forward_to']
+                list_of_chats = MDB.active.find({'_id':user_data['reply_to']})
+                if list_of_chats.count() == 0:
+                    update.message.reply_text("This session may have been resolved, use /cancel to select another user.")
+                    return
+                list_of_chats = list_of_chats.next()['forward_to']
                 sendToAll(bot, message, list_of_chats, user_data['reply_to'])
             except TelegramError:
                 update.message.reply_text("This session may have been resolved, use /cancel to select another user.")
@@ -430,26 +572,31 @@ def callbackResponseHandler(bot, update, user_data):
         MDB.callback_data.update({ '_id' : user_id }, mongoData)
         
     elif result['reason'] == 'forward_messages':
+        logger.debug("Editing text for a message.")
+        bot.editMessageText(text='Enjoy',
+                            chat_id=chat_id,
+                            message_id=message_id)
+        
         logger.debug("Forwarding messages from %s's history." % query.from_user.username)
         log = MDB.active.find({'_id':user_data['reply_to']}).next()
         logger.debug("active data %s" % log)
         log = log['log']
         logger.debug("Messages %s" % log)
+        
         if qdata == '0':
-            for message in log:
-                bot.forward_message(chat_id = chat_id,
-                                    from_chat_id = user_data['reply_to'],
-                                    message_id = message)
+            count = 0
         else:
             count = result[qdata]
-            for message in log[-count:]:
+            
+        for message in log[-count:]:
+            try:
                 bot.forward_message(chat_id = chat_id,
                                     from_chat_id = user_data['reply_to'],
                                     message_id = message)
-        logger.debug("Editing text for a message.")
-        bot.editMessageText(text='Enjoy',
-                            chat_id=chat_id,
-                            message_id=message_id)
+            except TelegramError:
+                bot.send_message(chat_id=chat_id,
+                                 text="This message was deleted, if this occurs every time, the user might have deleted this bot. Resolving this chat may be a good idea.")
+        
 
 
 def resolve(bot, update, user_data):
@@ -460,14 +607,14 @@ def resolve(bot, update, user_data):
         try:
             if user_data['reply_to']:
                 logger.info("They are an admin.")
-                msg = update.message.reply_text("This session has been resolved.")
+                msg = update.message.reply_text("This session has been resolved. Send this bot a message to start a new thread.")
                 list_of_chats = MDB.active.find({'_id':user_data['reply_to']}).next()['forward_to']
                 sendToAll(bot, msg, list_of_chats, user_data['reply_to'])
                 MDB.active.remove({"_id":user_data['reply_to']})
 
             elif user_data['active']:
                 logger.info("They are a user.")
-                msg = update.message.reply_text("This session has been resolved by the user.")
+                msg = update.message.reply_text("This session has been resolved by the user. Send this bot a message to start a new thread.")
                 list_of_chats = MDB.active.find({'_id':update.message.chat.id}).next()['forward_to']
                 forwardToAll(bot, list_of_chats, update.message.chat.id, msg.message_id)
                 MDB.active.remove({"_id": update.message.chat.id})
