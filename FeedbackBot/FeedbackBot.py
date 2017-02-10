@@ -115,6 +115,8 @@ If this bot appears to be acting weird or not responding, send /start or /cancel
 This bot was created by @YTKileroy
         '''
         update.message.reply_text(reply_text)
+    else:
+        update.message.reply_text("Please PM this bot and try /help again. For information, use /info.", quote=False)
 
 
 def statusReceived(bot, update):
@@ -645,7 +647,7 @@ def updateChatList(bot, job):
 def info(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
         return
-    update.message.reply_text(INFOTEXT)
+    update.message.reply_text(INFOTEXT, quote=False)
 
 
 def error(bot, update, error):
