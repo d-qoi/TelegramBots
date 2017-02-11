@@ -477,15 +477,16 @@ def messageReceived(bot, update, user_data):
                 alertAdmins(bot, user.first_name + " " + user.last_name)
 
             list_of_chats = MDB.active.find({'_id':chat_id})
-            logger.debug("List of chats find results %s" % list_of_chats)
+           
             if list_of_chats.count() > 0:
                 list_of_chats = list_of_chats.next()
+                logger.debug("List of chats find results %s" % list_of_chats)
                 if not 'forward_to' in list_of_chats:
                     MDB.active.update({'_id':chat_id},{'$set':{'forward_to':[]}})
                 else:
                     list_of_chats = list_of_chats['forward_to']
                     
-            forwardToAll(bot, list_of_chats, chat_id, message.message_id)
+                forwardToAll(bot, list_of_chats, chat_id, message.message_id)
 
         elif user_data['reply_to']:
             message = update.message
