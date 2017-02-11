@@ -485,8 +485,7 @@ def messageReceived(bot, update, user_data):
                     MDB.active.update({'_id':chat_id},{'$set':{'forward_to':[]}})
                 else:
                     list_of_chats = list_of_chats['forward_to']
-                    
-                forwardToAll(bot, list_of_chats, chat_id, message.message_id)
+                    forwardToAll(bot, list_of_chats, chat_id, message.message_id)
 
         elif user_data['reply_to']:
             message = update.message
