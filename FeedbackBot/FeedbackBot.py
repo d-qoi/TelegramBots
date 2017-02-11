@@ -412,7 +412,9 @@ def sendToAll(bot, message, list_of_chats, user_chat_id):
 
 def alertAdmins(bot, username):
     admins = []
+    logger.debug('alerting admins:')
     for group in MDB.groups.find():
+        logger.debug("Admins in group %s: %s" %(group['title'], group['admins']))
         admins += group['admins']
     admins = set(admins)
     for admin in admins:
@@ -482,7 +484,7 @@ def messageReceived(bot, update, user_data):
            
             if list_of_chats.count() > 0:
                 list_of_chats = list_of_chats.next()
-                logger.debug("List of chats find results %s" % list_of_chats)
+                logger.debug("List_of_chats find results %s" % list_of_chats)
                 if not 'forward_to' in list_of_chats:
                     MDB.active.update({'_id':chat_id},{'$set':{'forward_to':[]}})
                 else:
@@ -711,3 +713,4 @@ def main():
 if __name__ == '__main__':
     startFromCLI()
     main()  
+    
