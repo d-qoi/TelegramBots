@@ -429,6 +429,7 @@ def messageReceived(bot, update, user_data):
         # In case there was a reset of this server, reset everything, then check to see if they were chatting.
         if not 'active' in user_data and not 'reply_to' in user_data:
             user_data['active']=True
+            user_data['reply_to'] = None
             if getChatsAdmining(update.message.from_user.id, update.message.from_user.username):
                 reply_text = "There was a server reset for this bot. You were previously replying to:\n"
                 results = MDB.active.find({'forward_to' : update.message.chat.id})
@@ -455,6 +456,7 @@ def messageReceived(bot, update, user_data):
                 messageReceived(bot, update, user_data)
 
         if user_data['active']: # If they are currently giving feed back.
+            user_data['reply_to'] = None
             message = update.message
             user = message.from_user
             chat_id = message.chat.id
@@ -488,6 +490,7 @@ def messageReceived(bot, update, user_data):
                     forwardToAll(bot, list_of_chats, chat_id, message.message_id)
 
         elif user_data['reply_to']:
+            user_data['active'] = False
             message = update.message
             #user = message.from_user
             try:
