@@ -33,8 +33,8 @@ def checkValidCommand(text, username):
 
 # Utility functions
 # Returns the list of chats that a user is admin of.
-def getChatsAdmining(id, username):
-    results = MDB.groups.find({'admins': id})
+def getChatsAdmining(uid, username):
+    results = MDB.groups.find({'admins': uid})
     listOfChats = list()
     logger.debug("%s is in %i groups as admin" % (username, results.count()))
     for doc in results:
@@ -79,12 +79,6 @@ def start(bot, update, user_data):
             reply_text="Hello %s, anything you send to this bot will alert an admin, they should reply quickly.\n" % update.message.from_user.username
             reply_text=reply_text + "We would recommend starting with what you would like to discuss."
             update.message.reply_text(reply_text)
-            mongoData = dict()
-            mongoData['username'] = update.message.from_user.username
-            mongoData['name'] = update.message.from_user.first_name + " " + update.message.from_user.last_name
-            mongoData['id'] = update.message.from_user.id
-            mongoData['log'] = []
-            MDB.active.update({'_id':update.message.chat.id},mongoData,upsert=True)
             user_data['active'] = True
         
             
