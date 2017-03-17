@@ -164,6 +164,7 @@ def callbackHandler(bot, update, chat_data):
             callbackquery.edit_message_text(reply_text)
             logger.debug('finished')
             
+                    
 def getTranslations(chunk, lang, rate):
     baseURL = "https://speech.googleapis.com/v1beta1/speech:asyncrecognize?key={0}".format(AUTHKEY)
     body = dict()
@@ -183,36 +184,45 @@ def getTranslations(chunk, lang, rate):
     logger.debug("%s",r.text)
     
     if r.status_code != 200:
-        logger.info("Response code: %d\nData:\n%s"%(r.status_code, r.text))
+        logger.warning("Response code: %d\nData:\n%s"%(r.status_code, r.text))
         raise ConnectionError
     
     logger.debug("Valid response.")
     resp = json.loads(r.text)
     logger.debug("Name:%s"%(resp['name']))
     return resp['name']
-    
+                
 def downloadTranslation(chunks):
     text = ""
     confidence = 0;
     for chunk in chunks:
         URL = 'https://speech.googleapis.com/v1beta1/operations/%s?key=%s'%(chunk, AUTHKEY)
         r = requests.get(URL)
+        
+        if r.status_code != 200:
+            logger.warning("Response code: %d\nData:\n%s"%(r.status_code, r.text))
+            raise ConnectionError
+        
         body = json.loads(r.text)
         logger.debug("%s"%r.text)
+        
         while not 'done' in body or not body['done']:
             time.sleep(1)
             r = requests.get(URL)
             logger.debug("%s"%r.text)
             body = json.loads(r.text)
             
-        logger.debug("Translated: %s"%(body['response']['results'][0]['alternatives'][0]))
+        logger.debug("Translated: %s"%(body['response']['results']))
         
-        text += body['response']['results'][0]['alternatives'][0]['transcript']
-        confidence += body['response']['results'][0]['alternatives'][0]['confidence']
+        alts = sorted(body['response']['results'], key=lambda resp: resp['alternatives'][0]['confidence'], reverse=True)
         
-    return text, confidence
+        logger.debug("Alts: %s"%alts)
+        text += alts[0]['alternatives'][0]['transcript'] + ' '
+        confidence += alts[0]['alternatives'][0]['confidence']
+        
+    return text, confidence/float(len(chunks))
             
-    
+@run_async                
 def receiveMessage(bot, update, chat_data):
     logger.info('Message Received')
     
@@ -230,33 +240,40 @@ def receiveMessage(bot, update, chat_data):
         raise
     
     with NamedTemporaryFile(suffix='.ogg', dir=cwd) as inFile, NamedTemporaryFile(suffix='.wav', dir=cwd) as outFile:
-    #with mkstemp(suffix='.ogg', dir=cwd) as inFile, mkstemp(suffix='.wav', dir=cwd) as outFile:
         try:
             logger.debug("%s, %s"%(inFile.name, outFile.name))
             file.download(inFile.name)
-            #time.sleep(30)
             logger.debug("File received")
+            
+            
             command = ['ffmpeg','-y','-i',inFile.name, outFile.name]
             logger.debug("Command: %s", command)
             subprocess.run(command)
+            
             wavefile = wave.open(outFile, 'rb')
+            
             frames = wavefile.getnframes()
             rate = wavefile.getframerate()
             duration = frames / float(rate)
             logger.debug("Frames: %f, rate: %d, duration: %f"%(frames, rate, duration))
+            
+            chunks = list()
+            
             while duration > 0:
-                chunks = []
                 logger.debug("remaining time: %d"%duration)
                 chunk = wavefile.readframes(rate*55)
                 try:
                     chunks.append(getTranslations(chunk, lang, rate))
+                    logger.debug("Print: %s"%chunks)
                 except ConnectionError:
                     logger.debug("Connection Error.")
                     update.message.reply_text("An error occurred, please try again.")
                     return
                 
                 duration-=55
-            
+                
+                
+            logger.debug("List of chunks: %s"%chunks)
             logger.debug("Trying to download")
             text, confidence = downloadTranslation(chunks)
             logger.debug("Translated text: %s\nConfidence: %f"%(text, confidence))
@@ -294,14 +311,13 @@ def startFromCLI():
 
 def main():
     
-    #updater = Updater(AUTHTOKEN, user_sig_handler=sigHandler)
     updater = Updater(AUTHTOKEN)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler('start',start))
     dp.add_handler(CommandHandler('help',help))
     dp.add_handler(CommandHandler('chooselang', chooseLanguage, pass_chat_data=True, pass_args=True))
-    #dp.add_handler(InlineQueryHandler(inlineQuery))
+
     dp.add_handler(MessageHandler(Filters.voice, receiveMessage, pass_chat_data=True))
     
     dp.add_handler(CallbackQueryHandler(callbackHandler, pass_chat_data=True))
