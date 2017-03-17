@@ -6,27 +6,28 @@
 import argparse
 import logging
 import subprocess
-import speech_recognition as sr
+import base64
+import requests
+import wave
+import json
+import time
 from os import getcwd
 from json import load
 from tempfile import NamedTemporaryFile
-from pymongo import MongoClient
-from pymongo.errors import ConnectionFailure
 from telegram import TelegramError, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, Filters, MessageHandler, CallbackQueryHandler
+from telegram.ext.dispatcher import run_async
+
 
 
 AUTHTOKEN = None
-mClient = None
-mDB = None
 LANGUAGES = None
+AUTHKEY = ""
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG)
+    level=logging.INFO)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-
-r = sr.Recognizer()
 
 cwd = getcwd()
 
@@ -78,11 +79,13 @@ def checkValidCommand(text, username):
     except ValueError:
         return True
     
+@run_async
 def start(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
         return
     update.message.reply_text("Welcome to a Speech To Text bot! This bot will take any voice message sent to it and will try to translate it to text!")
 
+@run_async
 def help(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
         return
@@ -91,9 +94,8 @@ def help(bot, update):
     reply_text += "/chooselang (language code) will let you set the language directly with a supported language code.\n"
     reply_text += "/help prints this."
     update.message.reply_text(reply_text)
-    
-
-
+ 
+@run_async   
 def chooseLanguage(bot, update, chat_data, args):
     if not checkValidCommand(update.message.text, bot.username):
         return
@@ -104,6 +106,7 @@ def chooseLanguage(bot, update, chat_data, args):
                 if lang[0] == args[0]:
                     reply_text = 'Set language to: %s' % args[0]
                     update.message.reply_text(reply_text)
+                    chat_data['langlist'] = args[0]
                     return
                 
     chat_data['choosing'] = True
@@ -117,7 +120,7 @@ def chooseLanguage(bot, update, chat_data, args):
     keyboard = InlineKeyboardMarkup(updateKeyboard(chat_data))
     update.message.reply_text(reply_text, reply_markup=keyboard, quote=False)
     
-    
+@run_async
 def callbackHandler(bot, update, chat_data):
     logger.debug("Callback handler")
     callbackquery = update.callback_query
@@ -161,77 +164,121 @@ def callbackHandler(bot, update, chat_data):
             callbackquery.edit_message_text(reply_text)
             logger.debug('finished')
             
-
+def getTranslations(chunk, lang, rate):
+    baseURL = "https://speech.googleapis.com/v1beta1/speech:asyncrecognize?key={0}".format(AUTHKEY)
+    body = dict()
+    config = dict()
+    config['encoding'] = 'LINEAR16'
+    config['sampleRate'] = rate
+    config['languageCode'] = lang
+    config['maxAlternatives'] = 1
+    body['config'] = config
+    
+    audio = dict()
+    audio['content'] = base64.b64encode(chunk).decode('UTF-8')
+    body['audio'] = audio
+    
+    r = requests.post(baseURL, data=json.dumps(body))
+    logger.debug("Response from google received.")
+    logger.debug("%s",r.text)
+    
+    if r.status_code != 200:
+        logger.info("Response code: %d\nData:\n%s"%(r.status_code, r.text))
+        raise ConnectionError
+    
+    logger.debug("Valid response.")
+    resp = json.loads(r.text)
+    logger.debug("Name:%s"%(resp['name']))
+    return resp['name']
+    
+def downloadTranslation(chunks):
+    text = ""
+    confidence = 0;
+    for chunk in chunks:
+        URL = 'https://speech.googleapis.com/v1beta1/operations/%s?key=%s'%(chunk, AUTHKEY)
+        r = requests.get(URL)
+        body = json.loads(r.text)
+        logger.debug("%s"%r.text)
+        while not 'done' in body or not body['done']:
+            time.sleep(1)
+            r = requests.get(URL)
+            logger.debug("%s"%r.text)
+            body = json.loads(r.text)
+            
+        logger.debug("Translated: %s"%(body['response']['results'][0]['alternatives'][0]))
+        
+        text += body['response']['results'][0]['alternatives'][0]['transcript']
+        confidence += body['response']['results'][0]['alternatives'][0]['confidence']
+        
+    return text, confidence
+            
+    
 def receiveMessage(bot, update, chat_data):
-    logger.info("Received a message")
+    logger.info('Message Received')
     
     if not 'lang' in chat_data:
         update.message.reply_text("No language set through /chooselang, defaulting to en-US.", quote=False)
         chat_data['lang'] = 'en-US'
         
-    selectedLang = chat_data['lang']
+    lang = chat_data['lang']
     
-    if update.message.voice:
-        logger.debug("Is a voice message")
-        voiceID = update.message.voice.file_id
-        
-        with NamedTemporaryFile(suffix='.ogg', dir=cwd) as inFile, NamedTemporaryFile(suffix='.wav', dir=cwd) as outFile:
-            try:
-                file = bot.getFile(file_id = voiceID)
-                logger.debug("Got the file")
-            except TelegramError:
-                logger.warn("Failed to get a file.")
-                raise
-                        
-        
+    try:
+        file = bot.getFile(file_id = update.message.voice.file_id)
+        logger.debug("Got the file")
+    except TelegramError:
+        logger.warn("Failed to get a file.")
+        raise
+    
+    with NamedTemporaryFile(suffix='.ogg', dir=cwd) as inFile, NamedTemporaryFile(suffix='.wav', dir=cwd) as outFile:
+    #with mkstemp(suffix='.ogg', dir=cwd) as inFile, mkstemp(suffix='.wav', dir=cwd) as outFile:
+        try:
+            logger.debug("%s, %s"%(inFile.name, outFile.name))
             file.download(inFile.name)
-            #file.download()
-            logger.debug("Downloaded the file")
-            print(inFile.name)
-            command = ['ffmpeg','-y','-sample_fmt','s16','-i', inFile.name, outFile.name]
-            subprocess.run(command, stdout=subprocess.PIPE)
-            #logger.debug('oggdec output: \n %s' % p)
-            
-            with sr.AudioFile(outFile) as audioFile:
-                audio = r.record(audioFile)
-                logger.debug("Attempting to translate")
-                reply_text = 'Something very bad happened.'
+            #time.sleep(30)
+            logger.debug("File received")
+            command = ['ffmpeg','-y','-i',inFile.name, outFile.name]
+            logger.debug("Command: %s", command)
+            subprocess.run(command)
+            wavefile = wave.open(outFile, 'rb')
+            frames = wavefile.getnframes()
+            rate = wavefile.getframerate()
+            duration = frames / float(rate)
+            logger.debug("Frames: %f, rate: %d, duration: %f"%(frames, rate, duration))
+            while duration > 0:
+                chunks = []
+                logger.debug("remaining time: %d"%duration)
+                chunk = wavefile.readframes(rate*55)
                 try:
-                    recognized = r.recognize_google(audio, show_all=True, language=selectedLang)
-                    logger.debug("Translated")
-                    logger.debug("Full Text: %s" (str(recognized)))
-                    alts = sorted(recognized['alternative'], key=lambda conf: conf['confidence'], reverse=True)
-                    reply_text = "Confidence: %s, Lang: %s\nText:\n%s"%(alts[0]['confidence'],chat_data['lang'], alts[0]['transcript'])
-                   
-                except sr.UnknownValueError:
-                    print("Google Speech Recognition could not understand audio")
-                    reply_text = "Something happened."
-                except sr.RequestError as e:
-                    print("Could not request results from Google Speech Recognition service; {0}".format(e))
-                    reply_text = "Could not access Google, try again later."
+                    chunks.append(getTranslations(chunk, lang, rate))
+                except ConnectionError:
+                    logger.debug("Connection Error.")
+                    update.message.reply_text("An error occurred, please try again.")
+                    return
+                
+                duration-=55
             
-                update.message.reply_text(reply_text)
+            logger.debug("Trying to download")
+            text, confidence = downloadTranslation(chunks)
+            logger.debug("Translated text: %s\nConfidence: %f"%(text, confidence))
+            update.message.reply_text("Confidence: %f, Lang: %s\nText::\n%s"%(confidence, lang, text))
         
-def sigHandler(signum, frame):
-    logger.debug('Closing Mongo connection')
-    mClient.close()
+        except Exception as e:
+            logger.debug("Other error: %s"%e)
+            update.message.reply_text("An error occurred, please try again.")
      
 
 def error(bot, update, error):
     logger.warn('Update "%s" cause error "%s"' %(update, error))
 
 def startFromCLI():
-    global AUTHTOKEN, mClient, mDB, LANGUAGES
+    global AUTHTOKEN, LANGUAGES, AUTHKEY
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
                         help='Logging level for the logger, default = debug')
-    parser.add_argument('-muri','--mongoURI', default='mongodb://localhost:27017', 
-                        help="The MongoDB URI for connection and auth")
-    parser.add_argument('-mDB', '--mongoDB', default="stt",
-                        help="The database for MongoDB, default is stt")
     parser.add_argument('-lp','--langpack', default='languages.json', 
                         help='Location to the file that contains the JSON object listing languages.')
+    parser.add_argument('-g','--googleKey', help="Auth Key for google account")
     logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
     
     args = parser.parse_args()
@@ -242,21 +289,13 @@ def startFromCLI():
         logger.debug("Languages %s" % str(LANGUAGES.keys()))
     
     AUTHTOKEN = args.auth
-    mClient = args.mongoURI
-    mDB = args.mongoDB
+    AUTHKEY = args.googleKey
+    logger.debug(AUTHKEY)
 
 def main():
-    global mClient, mDB    
-    try:
-        mClient = MongoClient(mClient)
-        mDB = mClient[mDB]
-        mClient.admin.command('ismaster')
-        logger.debug('Mongo Connected')
-    except ConnectionFailure:
-        logger.warn('MongoDB not connected')
-        raise
     
-    updater = Updater(AUTHTOKEN, user_sig_handler=sigHandler)
+    #updater = Updater(AUTHTOKEN, user_sig_handler=sigHandler)
+    updater = Updater(AUTHTOKEN)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler('start',start))
