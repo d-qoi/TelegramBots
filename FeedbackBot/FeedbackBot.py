@@ -51,7 +51,9 @@ def updateGroupData(update):
     chat = update.message.chat
     group['title'] = chat.title
     group['admins'] = [chatmember.user.id for chatmember in chat.get_administrators()]
-    MDB.groups.update({'_id':chat.id}, group, upsert=True)
+    result = MDB.groups.update({'_id':chat.id}, group, upsert=True)
+    if 'upserted' in result:
+        logger.warn("Group %s was accidently deleted from the database."%chat.title)
 
 
 # User functions
@@ -474,7 +476,7 @@ def messageReceived(bot, update, user_data):
                     },
                  '$push': {
                     'log': message.message_id,
-                    }               
+                    }
                 }, upsert=True)
             logger.debug("Message Received created? %s" % 'upserted' in created)
             if 'upserted' in created:
