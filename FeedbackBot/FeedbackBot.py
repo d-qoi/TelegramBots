@@ -46,7 +46,12 @@ def getChatsAdmining(uid, username):
 def getChatList():
     return [[doc['title'], doc['_id']] for doc in MDB.groups.find()]
 
-
+def updateGroupData(update):
+    group = dict()
+    chat = update.message.chat
+    group['title'] = chat.title
+    group['admins'] = [chatmember.user.id for chatmember in chat.get_administrators()]
+    MDB.groups.update({'_id':chat.id}, group, upsert=True)
 
 
 # User functions
@@ -115,6 +120,7 @@ This bot was created by @YTKileroy
 
 def statusReceived(bot, update):
     logger.debug("Message Received")
+    
     if update.message.new_chat_member and update.message.new_chat_member.username == bot.username:
         logger.info("Added To Chat %s (%s)" %(update.message.chat.title, update.message.chat.id))
         newGroup = dict()
@@ -128,6 +134,7 @@ def statusReceived(bot, update):
         logger.info("Added %s to the group list" % update.message.chat.title)
         
     elif update.message.new_chat_member:
+        updateGroupData(update)
         logger.info("New member joined the chat.")
         update.message.reply_text(WELCOMETEXT, quote=False)
 
@@ -646,6 +653,7 @@ def updateChatList(bot, job):
 def info(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
         return
+    updateGroupData(update)
     update.message.reply_text(INFOTEXT, quote=False)
 
 
