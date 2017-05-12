@@ -655,7 +655,8 @@ def updateChatList(bot, job):
 def info(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
         return
-    updateGroupData(update)
+    if update.message.chat.type != 'private':
+        updateGroupData(update)
     update.message.reply_text(INFOTEXT, quote=False)
 
 
