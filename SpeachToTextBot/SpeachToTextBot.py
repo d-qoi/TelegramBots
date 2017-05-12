@@ -4,25 +4,34 @@
 # Created by Alexander Hirschfeld
 
 import argparse
-import logging
-import subprocess
 import base64
-import requests
-import wave
 import json
+import logging
+import requests
+import subprocess
 import time
-from os import getcwd
+import wave
 from json import load
+from os import getcwd
+from pymongo import MongoClient
 from tempfile import NamedTemporaryFile
 from telegram import TelegramError, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, Filters, MessageHandler, CallbackQueryHandler
 from telegram.ext.dispatcher import run_async
 
+from requesthistory import requesthistory
 
 
 AUTHTOKEN = None
 LANGUAGES = None
 AUTHKEY = ""
+MCLIENT = None
+MDB = None
+
+TRACKING = None
+
+HISTORY_ALL = list()
+HISTORY_VOICE = list()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.DEBUG)
@@ -30,6 +39,16 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 cwd = getcwd()
+
+def updateChatFile(chat_data, chat_id):
+    result = MDB.groups.update({'_id':chat_id}, chat_data, upsert=True)
+    if 'upserted' in result:
+        chat_data['lang'] = 'en-US'
+
+def getChatFile(chat_data, chat_id):
+    result = MDB.groups.find_one({'_id':chat_id})
+    if result:
+        chat_data['lang'] = result['lang']
 
 def updateKeyboard(chat_data):
     keyboard = list()
@@ -81,22 +100,40 @@ def checkValidCommand(text, username):
     
 @run_async
 def start(bot, update):
+    TRACKING.total.post()
     if not checkValidCommand(update.message.text, bot.username):
         return
     update.message.reply_text("Welcome to a Speech To Text bot! This bot will take any voice message sent to it and will try to translate it to text!")
 
 @run_async
 def help(bot, update):
+    TRACKING.total.post()
+    logger.info("Help called")
     if not checkValidCommand(update.message.text, bot.username):
         return
     reply_text = "Send me a voice message, forward me a voice message, add me to groups! I will try to transcribe anything sent!\n\n"
     reply_text += "/chooselang will let you choose a language and dialect.\n"
     reply_text += "/chooselang (language code) will let you set the language directly with a supported language code.\n"
-    reply_text += "/help prints this."
+    reply_text += "/help prints this. and /info prints info."
     update.message.reply_text(reply_text)
  
+ 
+@run_async
+def info(bot, update):
+    TRACKING.total.post()
+    logger.info("info called")
+    if not checkValidCommand(update.message.text, bot.username):
+        return
+    reply_text = "This bot uses the Google Speech API for transcription.\n\n"
+    reply_text += "Developed and maintained by @ytkileroy.\n"
+    reply_text += "If you wish to help support development of this bot, consider becoming a patron at: https://www.patreon.com/YTKileroy.\n\n"
+    reply_text += "Please share this bot with everyone!\n"
+    reply_text += "And if you want to know how this bot is doing, try calling /getStats"
+    update.message.reply_text(reply_text)
+    
 @run_async   
 def chooseLanguage(bot, update, chat_data, args):
+    TRACKING.total.post()
     if not checkValidCommand(update.message.text, bot.username):
         return
     logger.info("Choose language received")
@@ -106,7 +143,8 @@ def chooseLanguage(bot, update, chat_data, args):
                 if lang[0] == args[0]:
                     reply_text = 'Set language to: %s' % args[0]
                     update.message.reply_text(reply_text)
-                    chat_data['langlist'] = args[0]
+                    chat_data['lang'] = args[0]
+                    
                     return
                 
     chat_data['choosing'] = True
@@ -123,10 +161,13 @@ def chooseLanguage(bot, update, chat_data, args):
 @run_async
 def callbackHandler(bot, update, chat_data):
     logger.debug("Callback handler")
+    TRACKING.total.post()
     callbackquery = update.callback_query
     querydata = callbackquery.data
     if not 'lang' in  chat_data:
-        chat_data['lang'] = ""
+        getChatFile(chat_data, update.message.chat.id)
+        if not 'lang' in chat_data:
+            chat_data['lang'] = ""
         
     if querydata == 'more':
         chat_data['choosing'] = True
@@ -162,6 +203,7 @@ def callbackHandler(bot, update, chat_data):
             reply_text = "Language set to: %s" % lang
             chat_data['lang'] = lang
             callbackquery.edit_message_text(reply_text)
+            updateChatFile(chat_data, callbackquery.message.chat.id)
             logger.debug('finished')
             
                     
@@ -225,10 +267,12 @@ def downloadTranslation(chunks):
 @run_async                
 def receiveMessage(bot, update, chat_data):
     logger.info('Message Received')
-    
+    TRACKING.voice.post()
     if not 'lang' in chat_data:
-        update.message.reply_text("No language set through /chooselang, defaulting to en-US.", quote=False)
-        chat_data['lang'] = 'en-US'
+        getChatFile(chat_data, update.message.chat.id)
+        if not 'lang' in chat_data:
+            update.message.reply_text("No language set through /chooselang, defaulting to en-US.", quote=False)
+            chat_data['lang'] = 'en-US'
         
     lang = chat_data['lang']
     
@@ -283,12 +327,26 @@ def receiveMessage(bot, update, chat_data):
             logger.debug("Other error: %s"%e)
             update.message.reply_text("An error occurred, please try again.")
      
+@run_async
+def countme(bot, update):
+    TRACKING.total.post()
+
+@run_async
+def getMessageStats(bot, update):
+    TRACKING.total.post()
+    logger.info("Stats called.")
+    reply_text = "Stats for @listenformebot\n"
+    reply_text += "Total in last hour: %s\n"%(str(TRACKING.total.getCountHour()))
+    reply_text += "Voice in last hour: %s\n"%str(TRACKING.voice.getCountHour())
+    reply_text += "Total in last minute: %s\n"%str(TRACKING.total.getCountMinute())
+    reply_text += "Voice in last minute: %s\n"%str(TRACKING.voice.getCountMinute())
+    update.message.reply_text(reply_text)
 
 def error(bot, update, error):
     logger.warn('Update "%s" cause error "%s"' %(update, error))
 
 def startFromCLI():
-    global AUTHTOKEN, LANGUAGES, AUTHKEY
+    global AUTHTOKEN, LANGUAGES, AUTHKEY, MDB, MCLIENT, TRACKING
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
@@ -296,6 +354,9 @@ def startFromCLI():
     parser.add_argument('-lp','--langpack', default='languages.json', 
                         help='Location to the file that contains the JSON object listing languages.')
     parser.add_argument('-g','--googleKey', help="Auth Key for google account")
+    parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connection and auth")
+    parser.add_argument('-mdb','--MongoDB', default='speech', help="The MongoDB Database that this will use")
+    
     logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
     
     args = parser.parse_args()
@@ -308,17 +369,24 @@ def startFromCLI():
     AUTHTOKEN = args.auth
     AUTHKEY = args.googleKey
     logger.debug(AUTHKEY)
+    MCLIENT = MongoClient(args.MongoURI)
+    MDB = MCLIENT[args.MongoDB]
+    
+    TRACKING = requesthistory('total', 'voice')
 
 def main():
     
     updater = Updater(AUTHTOKEN)
     dp = updater.dispatcher
 
-    dp.add_handler(CommandHandler('start',start))
-    dp.add_handler(CommandHandler('help',help))
+    dp.add_handler(CommandHandler('start', start))
+    dp.add_handler(CommandHandler('help', help))
+    dp.add_handler(CommandHandler('info', info))
+    dp.add_handler(CommandHandler('getStats', getMessageStats))
     dp.add_handler(CommandHandler('chooselang', chooseLanguage, pass_chat_data=True, pass_args=True))
 
     dp.add_handler(MessageHandler(Filters.voice, receiveMessage, pass_chat_data=True))
+    dp.add_handler(MessageHandler(Filters.all, countme))
     
     dp.add_handler(CallbackQueryHandler(callbackHandler, pass_chat_data=True))
 
