@@ -13,6 +13,7 @@ import time
 import wave
 from json import load
 from os import getcwd
+from math import ceil
 from pymongo import MongoClient
 from tempfile import NamedTemporaryFile
 from telegram import TelegramError, InlineKeyboardButton, InlineKeyboardMarkup
@@ -27,6 +28,8 @@ LANGUAGES = None
 AUTHKEY = ""
 MCLIENT = None
 MDB = None
+
+ALERT_THRESH = None
 
 TRACKING = None
 
@@ -117,7 +120,6 @@ def help(bot, update):
     reply_text += "/help prints this. and /info prints info."
     update.message.reply_text(reply_text)
  
- 
 @run_async
 def info(bot, update):
     TRACKING.total.post()
@@ -130,6 +132,16 @@ def info(bot, update):
     reply_text += "Please share this bot with everyone!\n"
     reply_text += "And if you want to know how this bot is doing, try calling /getStats"
     update.message.reply_text(reply_text)
+    
+@run_async
+def support(bot, update, chat_data):
+    TRACKING.total.post()
+    logger.info("Support called")
+    reply_text = "If you like @listenformebot, consider supporting it!\n\n"
+    reply_text += "Total Transcribed: %d, Adjusted for Minimum Time: %d" %(chat_data['total_dur'], chat_data['adj_dur'])
+    suplist = [InlineKeyboardButton('Website', 'https://ytkileroy.github.io/TelegramBots/'),
+               InlineKeyboardButton('Patreon', 'https://www.patreon.com/YTKileroy')]
+    update.message.reply_text(reply_text, reply_markup = InlineKeyboardMarkup(suplist), quote=False)
     
 @run_async   
 def chooseLanguage(bot, update, chat_data, args):
@@ -168,7 +180,9 @@ def callbackHandler(bot, update, chat_data):
         getChatFile(chat_data, update.message.chat.id)
         if not 'lang' in chat_data:
             chat_data['lang'] = ""
-        
+    if not querydata:
+        return
+    
     if querydata == 'more':
         chat_data['choosing'] = True
         chat_data['choosingdialect'] = False
@@ -205,8 +219,7 @@ def callbackHandler(bot, update, chat_data):
             callbackquery.edit_message_text(reply_text)
             updateChatFile(chat_data, callbackquery.message.chat.id)
             logger.debug('finished')
-            
-                    
+                              
 def getTranslations(chunk, lang, rate):
     baseURL = "https://speech.googleapis.com/v1beta1/speech:asyncrecognize?key={0}".format(AUTHKEY)
     body = dict()
@@ -302,16 +315,19 @@ def receiveMessage(bot, update, chat_data):
             logger.debug("Frames: %f, rate: %d, duration: %f"%(frames, rate, duration))
             
             chunks = list()
+            chat_data['total_dur'] = chat_data['total_dur'] + duration
+            chat_data['adj_dur'] = chat_data['adj_dur'] + ceil(duration/15)*15
+            logger.debug("Current total: %s, Adjusted total: %s"%(str(chat_data['total_dur']), str(chat_data['adj_dur'])))
             
             while duration > 0:
                 logger.debug("remaining time: %d"%duration)
                 chunk = wavefile.readframes(rate*55)
                 try:
                     chunks.append(getTranslations(chunk, lang, rate))
-                    logger.debug("Print: %s"%chunks)
+                    logger.debug("Print: %s"%chunks[-1])
                 except ConnectionError:
                     logger.debug("Connection Error.")
-                    update.message.reply_text("An error occurred, please try again.")
+                    update.message.reply_text("An error occurred, please try again and talk to @ytkileroy")
                     return
                 
                 duration-=55
@@ -321,7 +337,11 @@ def receiveMessage(bot, update, chat_data):
             logger.debug("Trying to download")
             text, confidence = downloadTranslation(chunks)
             logger.debug("Translated text: %s\nConfidence: %f"%(text, confidence))
-            update.message.reply_text("Confidence: %f, Lang: %s\nText::\n%s"%(confidence, lang, text))
+            if chat_data['adj_dur'] > ALERT_THRESH*60:
+                appended = "If you like @listenformebot, consider /support"
+            else:
+                appended = ""
+            update.message.reply_text("Confidence: %f, Lang: %s\nText::\n%s\n\n%s"%(confidence, lang, text, appended))
         
         except Exception as e:
             logger.debug("Other error: %s"%e)
@@ -340,13 +360,30 @@ def getMessageStats(bot, update):
     reply_text += "Voice in last hour: %s\n"%str(TRACKING.voice.getCountHour())
     reply_text += "Total in last minute: %s\n"%str(TRACKING.total.getCountMinute())
     reply_text += "Voice in last minute: %s\n"%str(TRACKING.voice.getCountMinute())
+    
+    result = MDB.groups.find()
+    languages = dict()
+    for chat in result:
+        if chat['lang'] in languages:
+            languages[chat['lang']] += 1
+        else:
+            languages[chat['lang']] = 1
+            
+    reply_text += "%d languages served\n" % len(languages)
+    langtups = [(v, k) for k,v in languages.items()]
+    langtups.sort(reverse=True)
+    for v, k in langtups:
+        reply_text += "%s :: %s user\n"%(k, str(v))
+        
+    
+        
     update.message.reply_text(reply_text)
 
 def error(bot, update, error):
     logger.warn('Update "%s" cause error "%s"' %(update, error))
 
 def startFromCLI():
-    global AUTHTOKEN, LANGUAGES, AUTHKEY, MDB, MCLIENT, TRACKING
+    global AUTHTOKEN, LANGUAGES, AUTHKEY, MDB, MCLIENT, TRACKING, ALERT_THRESH
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
@@ -356,6 +393,7 @@ def startFromCLI():
     parser.add_argument('-g','--googleKey', help="Auth Key for google account")
     parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connection and auth")
     parser.add_argument('-mdb','--MongoDB', default='speech', help="The MongoDB Database that this will use")
+    parser.add_argument('-thr', '--thresh', default=100, type=int, help='Threshold in minutes for the alert.')
     
     logLevel = {'none':logging.NOTSET,'debug':logging.DEBUG,'info':logging.INFO,'warn':logging.WARNING}
     
@@ -373,15 +411,18 @@ def startFromCLI():
     MDB = MCLIENT[args.MongoDB]
     
     TRACKING = requesthistory('total', 'voice')
+    
+    ALERT_THRESH = args.thr
 
 def main():
     
-    updater = Updater(AUTHTOKEN)
+    updater = Updater(AUTHTOKEN, workers=10)
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler('start', start))
     dp.add_handler(CommandHandler('help', help))
     dp.add_handler(CommandHandler('info', info))
+    dp.add_handler(CommandHandler('support', support, pass_chat_data=True))
     dp.add_handler(CommandHandler('getStats', getMessageStats))
     dp.add_handler(CommandHandler('chooselang', chooseLanguage, pass_chat_data=True, pass_args=True))
 
