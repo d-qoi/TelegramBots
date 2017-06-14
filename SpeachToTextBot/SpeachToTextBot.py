@@ -138,9 +138,9 @@ def support(bot, update, chat_data):
     TRACKING.total.post()
     logger.info("Support called")
     reply_text = "If you like @listenformebot, consider supporting it!\n\n"
-    reply_text += "Total Transcribed: %d, Adjusted for Minimum Time: %d" %(chat_data['total_dur'], chat_data['adj_dur'])
-    suplist = [InlineKeyboardButton('Website', 'https://ytkileroy.github.io/TelegramBots/'),
-               InlineKeyboardButton('Patreon', 'https://www.patreon.com/YTKileroy')]
+    reply_text += "Total Seconds Transcribed: %d\n Adjusted for Minimum Second Quota: %d" %(chat_data['total_dur'], chat_data['adj_dur'])
+    suplist = [[InlineKeyboardButton('Website', 'https://ytkileroy.github.io/TelegramBots/'),
+               InlineKeyboardButton('Patreon', 'https://www.patreon.com/YTKileroy')]]
     update.message.reply_text(reply_text, reply_markup = InlineKeyboardMarkup(suplist), quote=False)
     
 @run_async   
@@ -315,6 +315,11 @@ def receiveMessage(bot, update, chat_data):
             logger.debug("Frames: %f, rate: %d, duration: %f"%(frames, rate, duration))
             
             chunks = list()
+            if not 'total_dur' in chat_data:
+                chat_data['total_dur'] = 0
+                chat_data['adj_dur'] = 0
+                updateChatFile(chat_data, update.message.chat.id)
+                
             chat_data['total_dur'] = chat_data['total_dur'] + duration
             chat_data['adj_dur'] = chat_data['adj_dur'] + ceil(duration/15)*15
             logger.debug("Current total: %s, Adjusted total: %s"%(str(chat_data['total_dur']), str(chat_data['adj_dur'])))
@@ -339,13 +344,14 @@ def receiveMessage(bot, update, chat_data):
             logger.debug("Translated text: %s\nConfidence: %f"%(text, confidence))
             if chat_data['adj_dur'] > ALERT_THRESH*60:
                 appended = "If you like @listenformebot, consider /support"
+                updateChatFile(chat_data, update.message.chat.id)
             else:
                 appended = ""
             update.message.reply_text("Confidence: %f, Lang: %s\nText::\n%s\n\n%s"%(confidence, lang, text, appended))
         
         except Exception as e:
             logger.debug("Other error: %s"%e)
-            update.message.reply_text("An error occurred, please try again.")
+            update.message.reply_text("An error occurred, please try again and talk to @ytkileroy.")
      
 @run_async
 def countme(bot, update):
@@ -412,7 +418,7 @@ def startFromCLI():
     
     TRACKING = requesthistory('total', 'voice')
     
-    ALERT_THRESH = args.thr
+    ALERT_THRESH = args.thresh
 
 def main():
     
