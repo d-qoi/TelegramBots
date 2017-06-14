@@ -35,7 +35,4 @@ class requesthistory(object):
          
         def prune(self):
             now = datetime.datetime.now()
-            for p in self.history:
-                delta = now-p
-                if abs(delta.total_seconds()) > 60*60:
-                    self.history.remove(p)
+            self.history = [i for i in self.history if abs((now - i).total_seconds()) < 3600]
