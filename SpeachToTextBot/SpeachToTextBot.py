@@ -52,6 +52,8 @@ def getChatFile(chat_data, chat_id):
     result = MDB.groups.find_one({'_id':chat_id})
     if result:
         chat_data['lang'] = result['lang']
+        chat_data['adj_dur'] = result['adj_dur']
+        chat_data['total_dur'] = result['total_dur']
 
 def updateKeyboard(chat_data):
     keyboard = list()
@@ -344,7 +346,6 @@ def receiveMessage(bot, update, chat_data):
             logger.debug("Translated text: %s\nConfidence: %f"%(text, confidence))
             if chat_data['adj_dur'] > ALERT_THRESH*60:
                 appended = "If you like @listenformebot, consider /support"
-                updateChatFile(chat_data, update.message.chat.id)
             else:
                 appended = ""
             update.message.reply_text("Confidence: %f, Lang: %s\nText::\n%s\n\n%s"%(confidence, lang, text, appended))
@@ -352,6 +353,7 @@ def receiveMessage(bot, update, chat_data):
         except Exception as e:
             logger.debug("Other error: %s"%e)
             update.message.reply_text("An error occurred, please try again and talk to @ytkileroy.")
+        updateChatFile(chat_data, update.message.chat.id)
      
 @run_async
 def countme(bot, update):
