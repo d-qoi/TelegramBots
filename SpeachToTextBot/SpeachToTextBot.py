@@ -119,7 +119,9 @@ def help(bot, update):
     reply_text = "Send me a voice message, forward me a voice message, add me to groups! I will try to transcribe anything sent!\n\n"
     reply_text += "/chooselang will let you choose a language and dialect.\n"
     reply_text += "/chooselang (language code) will let you set the language directly with a supported language code.\n"
-    reply_text += "/help prints this. and /info prints info."
+    reply_text += "/help prints this. and /info prints info.\n"
+    reply_text += "/support shows ways that you may help support this bot, though it only works if you've sent a voice message.\n\n"
+    reply_text += "This bot was created by @ytkileroy"
     update.message.reply_text(reply_text)
  
 @run_async
@@ -130,7 +132,7 @@ def info(bot, update):
         return
     reply_text = "This bot uses the Google Speech API for transcription.\n\n"
     reply_text += "Developed and maintained by @ytkileroy.\n"
-    reply_text += "If you wish to help support development of this bot, consider becoming a patron at: https://www.patreon.com/YTKileroy.\n\n"
+    reply_text += "If you wish to help support development of this bot, consider calling /support or becoming a patron at: https://www.patreon.com/YTKileroy.\n\n"
     reply_text += "Please share this bot with everyone!\n"
     reply_text += "And if you want to know how this bot is doing, try calling /getStats"
     update.message.reply_text(reply_text)
@@ -140,7 +142,8 @@ def support(bot, update, chat_data):
     TRACKING.total.post()
     logger.info("Support called")
     reply_text = "If you like @listenformebot, consider supporting it!\n\n"
-    reply_text += "Total Seconds Transcribed: %d\n Adjusted for Minimum Second Quota: %d" %(chat_data['total_dur'], chat_data['adj_dur'])
+    if 'total_dur' in chat_data:
+        reply_text += "Total Seconds Transcribed: %d\n Adjusted for Minimum Second Quota: %d" %(chat_data['total_dur'], chat_data['adj_dur'])
     suplist = [[InlineKeyboardButton('Website', 'https://ytkileroy.github.io/TelegramBots/'),
                InlineKeyboardButton('Patreon', 'https://www.patreon.com/YTKileroy')]]
     update.message.reply_text(reply_text, reply_markup = InlineKeyboardMarkup(suplist), quote=False)
