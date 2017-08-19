@@ -4,19 +4,11 @@
 # Created by Alexander Hirschfeld
 
 import argparse
-import base64
-import json
 import logging
-import requests
-import subprocess
-import time
-import wave
 from json import load
 from os import getcwd
-from math import ceil
 from pymongo import MongoClient
-from tempfile import NamedTemporaryFile
-from telegram import TelegramError, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, Filters, MessageHandler, CallbackQueryHandler
 from telegram.ext.dispatcher import run_async
 
@@ -25,7 +17,6 @@ from requesthistory import requesthistory
 
 AUTHTOKEN = None
 LANGUAGES = None
-AUTHKEY = ""
 MCLIENT = None
 MDB = None
 
@@ -37,7 +28,7 @@ HISTORY_ALL = list()
 HISTORY_VOICE = list()
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO)
+    level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -51,9 +42,7 @@ def updateChatFile(chat_data, chat_id):
 def getChatFile(chat_data, chat_id):
     result = MDB.groups.find_one({'_id':chat_id})
     if result:
-        chat_data['lang'] = result['lang']
-        chat_data['adj_dur'] = result['adj_dur']
-        chat_data['total_dur'] = result['total_dur']
+        chat_data['lang'] = result.get('lang', 'en-US')
 
 def updateKeyboard(chat_data):
     keyboard = list()
@@ -343,7 +332,7 @@ def error(bot, update, error):
     logger.warn('Update "%s" cause error "%s"' %(update, error))
 
 def startFromCLI():
-    global AUTHTOKEN, LANGUAGES, AUTHKEY, MDB, MCLIENT, TRACKING, ALERT_THRESH
+    global AUTHTOKEN, LANGUAGES, MDB, MCLIENT, TRACKING, ALERT_THRESH
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
@@ -364,8 +353,6 @@ def startFromCLI():
         logger.debug("Languages %s" % str(LANGUAGES.keys()))
     
     AUTHTOKEN = args.auth
-    AUTHKEY = args.googleKey
-    logger.debug(AUTHKEY)
     MCLIENT = MongoClient(args.MongoURI)
     MDB = MCLIENT[args.MongoDB]
     
