@@ -4,19 +4,11 @@
 # Created by Alexander Hirschfeld
 
 import argparse
-import base64
-import json
 import logging
-import requests
-import subprocess
-import time
-import wave
 from json import load
 from os import getcwd
-from math import ceil
 from pymongo import MongoClient
-from tempfile import NamedTemporaryFile
-from telegram import TelegramError, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, Filters, MessageHandler, CallbackQueryHandler
 from telegram.ext.dispatcher import run_async
 
@@ -25,7 +17,6 @@ from requesthistory import requesthistory
 
 AUTHTOKEN = None
 LANGUAGES = None
-AUTHKEY = ""
 MCLIENT = None
 MDB = None
 
@@ -51,9 +42,7 @@ def updateChatFile(chat_data, chat_id):
 def getChatFile(chat_data, chat_id):
     result = MDB.groups.find_one({'_id':chat_id})
     if result:
-        chat_data['lang'] = result['lang']
-        chat_data['adj_dur'] = result['adj_dur']
-        chat_data['total_dur'] = result['total_dur']
+        chat_data['lang'] = result.get('lang', 'en-US')
 
 def updateKeyboard(chat_data):
     keyboard = list()
@@ -119,9 +108,7 @@ def help(bot, update):
     reply_text = "Send me a voice message, forward me a voice message, add me to groups! I will try to transcribe anything sent!\n\n"
     reply_text += "/chooselang will let you choose a language and dialect.\n"
     reply_text += "/chooselang (language code) will let you set the language directly with a supported language code.\n"
-    reply_text += "/help prints this. and /info prints info.\n"
-    reply_text += "/support shows ways that you may help support this bot, though it only works if you've sent a voice message.\n\n"
-    reply_text += "This bot was created by @ytkileroy"
+    reply_text += "/help prints this. and /info prints info."
     update.message.reply_text(reply_text)
  
 @run_async
@@ -132,7 +119,7 @@ def info(bot, update):
         return
     reply_text = "This bot uses the Google Speech API for transcription.\n\n"
     reply_text += "Developed and maintained by @ytkileroy.\n"
-    reply_text += "If you wish to help support development of this bot, consider calling /support or becoming a patron at: https://www.patreon.com/YTKileroy.\n\n"
+    reply_text += "If you wish to help support development of this bot, consider becoming a patron at: https://www.patreon.com/YTKileroy.\n\n"
     reply_text += "Please share this bot with everyone!\n"
     reply_text += "And if you want to know how this bot is doing, try calling /getStats"
     update.message.reply_text(reply_text)
@@ -141,9 +128,79 @@ def info(bot, update):
 def support(bot, update, chat_data):
     TRACKING.total.post()
     logger.info("Support called")
-    reply_text = "If you like @listenformebot, consider supporting it!\n\n"
-    if 'total_dur' in chat_data:
-        reply_text += "Total Seconds Transcribed: %d\n Adjusted for Minimum Second Quota: %d" %(chat_data['total_dur'], chat_data['adj_dur'])
+    if 'it' in chat_data['lang']:
+        reply_text = """
+Ciao!
+
+Sono triste dire che è diventato troppo costoso per continuare a ospitare @listenformebot. E 'offline per ora. Sarà indietro quando posso trovare un discorso a prezzi ragionevoli presso il servizio di testo o se posso ottenere aiuto a ospitare questo bot.
+
+Non mi aspettavo che il bot cresca così, ma sono contento che sia diventato popolare.
+
+Se vuoi supportarmi per mantenere vivo questo bot, pensa a parlare con @YTKileroy o donando per mantenere questo bot in esecuzione attraverso il mio sito web (/supporto)
+
+Grazie,
+Y.T. Kileroy
+@YTKileroy
+"""
+
+    elif 'es' in chat_data['lang']:
+        reply_text = """
+¡Hola!
+
+Estoy triste de decir que se ha vuelto demasiado caro para seguir corriendo @ listenformebot. El bot está ahora sin conexión. Volveré cuando pueda encontrar un servicio de transcripción a un precio razonable o si puedo obtener ayuda para alojar este bot.
+
+No esperaba que el bot creciera así, pero me alegro de que fuera popular.
+
+Si quieres apoyarme para mantener este bot vivo, piensa en hablar con @YTKileroy o donar para mantener este bot ejecutándose en mi sitio web (/support)
+
+Gracias,
+Y.T. Kileroy
+@YTKileroy
+"""
+
+    elif 'ru' in chat_data['lang']:
+        reply_text = """
+Здравствуйте!
+
+Мне грустно говорить, что было слишком дорого продолжать хостинг @listenformebot. Теперь бот отключен. Этот бот вернется, когда я найду услугу транскрипции по разумной цене, или я смогу получить помощь в размещении этого бота.
+
+Я не ожидал, что бот будет расти таким образом, но я рад, что он был популярен.
+
+Если вы хотите поддержать меня, чтобы этот бот был жив, подумайте о том, как поговорить с @YTKileroy или пожертвовать этого бота на мой сайт (/support)
+
+Спасибо,
+Y.T. Kileroy
+@YTKileroy   
+"""
+    elif 'pt' in chat_data['lang']:
+            reply_text = """
+Olá!
+
+Estou triste em dizer que tornou-se muito caro para mim continuar hospedando @listenformebot sozinho. O bot está agora offline. Será novamente on-line quando eu puder encontrar um serviço de transcrição com preços razoáveis, ou se você conseguir obter ajuda para hospedar este bot.
+
+Não esperava que ele crescesse, mas estou feliz por ter se tornado popular.
+
+Se você gostaria de me apoiar para manter este bot online, considere falar com @YTKileroy, ou doar para este bot no meu site (/ support)
+
+Obrigado,
+Y.T. Kileroy
+@YTKileroy
+"""
+
+    else:
+        reply_text = """
+Hello!
+
+I am sad to say that it has become too expensive for me to continue hosting @listenformebot alone. It is offline for now. It will be back when I can find a reasonably priced speech to text service, or if I can get help hosting this bot.
+
+I was not expecting it to grow as it did, but I am glad it became popular.
+
+If you would like to support me to keep this bot online, consider talking to @YTKileroy, or donating to keep this bot running through my website (/support) 
+
+Y.T. Kileroy
+@YTKileroy
+"""
+
     suplist = [[InlineKeyboardButton('Website', 'https://ytkileroy.github.io/TelegramBots/'),
                InlineKeyboardButton('Patreon', 'https://www.patreon.com/YTKileroy')]]
     update.message.reply_text(reply_text, reply_markup = InlineKeyboardMarkup(suplist), quote=False)
@@ -225,62 +282,6 @@ def callbackHandler(bot, update, chat_data):
             updateChatFile(chat_data, callbackquery.message.chat.id)
             logger.debug('finished')
                               
-def getTranslations(chunk, lang, rate):
-    baseURL = "https://speech.googleapis.com/v1beta1/speech:asyncrecognize?key={0}".format(AUTHKEY)
-    body = dict()
-    config = dict()
-    config['encoding'] = 'LINEAR16'
-    config['sampleRate'] = rate
-    config['languageCode'] = lang
-    config['maxAlternatives'] = 1
-    body['config'] = config
-    
-    audio = dict()
-    audio['content'] = base64.b64encode(chunk).decode('UTF-8')
-    body['audio'] = audio
-    
-    r = requests.post(baseURL, data=json.dumps(body))
-    logger.debug("Response from google received.")
-    logger.debug("%s",r.text)
-    
-    if r.status_code != 200:
-        logger.warning("Response code: %d\nData:\n%s"%(r.status_code, r.text))
-        raise ConnectionError
-    
-    logger.debug("Valid response.")
-    resp = json.loads(r.text)
-    logger.debug("Name:%s"%(resp['name']))
-    return resp['name']
-                
-def downloadTranslation(chunks):
-    text = ""
-    confidence = 0;
-    for chunk in chunks:
-        URL = 'https://speech.googleapis.com/v1beta1/operations/%s?key=%s'%(chunk, AUTHKEY)
-        r = requests.get(URL)
-        
-        if r.status_code != 200:
-            logger.warning("Response code: %d\nData:\n%s"%(r.status_code, r.text))
-            raise ConnectionError
-        
-        body = json.loads(r.text)
-        logger.debug("%s"%r.text)
-        
-        while not 'done' in body or not body['done']:
-            time.sleep(1)
-            r = requests.get(URL)
-            logger.debug("%s"%r.text)
-            body = json.loads(r.text)
-            
-        logger.debug("Translated: %s"%(body['response']['results']))
-        
-        alts = sorted(body['response']['results'], key=lambda resp: resp['alternatives'][0]['confidence'], reverse=True)
-        
-        logger.debug("Alts: %s"%alts)
-        text += alts[0]['alternatives'][0]['transcript'] + ' '
-        confidence += alts[0]['alternatives'][0]['confidence']
-        
-    return text, confidence/float(len(chunks))
             
 @run_async                
 def receiveMessage(bot, update, chat_data):
@@ -291,73 +292,10 @@ def receiveMessage(bot, update, chat_data):
         if not 'lang' in chat_data:
             update.message.reply_text("No language set through /chooselang, defaulting to en-US.", quote=False)
             chat_data['lang'] = 'en-US'
-        
-    lang = chat_data['lang']
     
-    try:
-        file = bot.getFile(file_id = update.message.voice.file_id)
-        logger.debug("Got the file")
-    except TelegramError:
-        logger.warn("Failed to get a file.")
-        raise
+    update.message.reply_text("@listenformebot has been disabled. If you would like to help keep it alive, send /support.")    
     
-    with NamedTemporaryFile(suffix='.ogg', dir=cwd) as inFile, NamedTemporaryFile(suffix='.wav', dir=cwd) as outFile:
-        try:
-            logger.debug("%s, %s"%(inFile.name, outFile.name))
-            file.download(inFile.name)
-            logger.debug("File received")
-            
-            
-            command = ['ffmpeg','-y','-i',inFile.name, outFile.name]
-            logger.debug("Command: %s", command)
-            subprocess.run(command)
-            
-            wavefile = wave.open(outFile, 'rb')
-            
-            frames = wavefile.getnframes()
-            rate = wavefile.getframerate()
-            duration = frames / float(rate)
-            logger.debug("Frames: %f, rate: %d, duration: %f"%(frames, rate, duration))
-            
-            chunks = list()
-            if not 'total_dur' in chat_data:
-                chat_data['total_dur'] = 0
-                chat_data['adj_dur'] = 0
-                updateChatFile(chat_data, update.message.chat.id)
-                
-            chat_data['total_dur'] = chat_data['total_dur'] + duration
-            chat_data['adj_dur'] = chat_data['adj_dur'] + ceil(duration/15)*15
-            logger.debug("Current total: %s, Adjusted total: %s"%(str(chat_data['total_dur']), str(chat_data['adj_dur'])))
-            
-            while duration > 0:
-                logger.debug("remaining time: %d"%duration)
-                chunk = wavefile.readframes(rate*55)
-                try:
-                    chunks.append(getTranslations(chunk, lang, rate))
-                    logger.debug("Print: %s"%chunks[-1])
-                except ConnectionError:
-                    logger.debug("Connection Error.")
-                    update.message.reply_text("An error occurred, please try again and talk to @ytkileroy")
-                    return
-                
-                duration-=55
-                
-                
-            logger.debug("List of chunks: %s"%chunks)
-            logger.debug("Trying to download")
-            text, confidence = downloadTranslation(chunks)
-            logger.debug("Translated text: %s\nConfidence: %f"%(text, confidence))
-            if chat_data['adj_dur'] > ALERT_THRESH*60:
-                appended = "If you like @listenformebot, consider /support"
-            else:
-                appended = ""
-            update.message.reply_text("Confidence: %f, Lang: %s\nText::\n%s\n\n%s"%(confidence, lang, text, appended))
-        
-        except Exception as e:
-            logger.debug("Other error: %s"%e)
-            update.message.reply_text("An error occurred, please try again and talk to @ytkileroy.")
-        updateChatFile(chat_data, update.message.chat.id)
-     
+
 @run_async
 def countme(bot, update):
     TRACKING.total.post()
@@ -394,14 +332,13 @@ def error(bot, update, error):
     logger.warn('Update "%s" cause error "%s"' %(update, error))
 
 def startFromCLI():
-    global AUTHTOKEN, LANGUAGES, AUTHKEY, MDB, MCLIENT, TRACKING, ALERT_THRESH
+    global AUTHTOKEN, LANGUAGES, MDB, MCLIENT, TRACKING, ALERT_THRESH
     parser = argparse.ArgumentParser()
     parser.add_argument('auth', type=str, help="The Auth Token given by Telegram's @botfather")
     parser.add_argument('-l','--llevel', default='debug', choices=['debug','info','warn','none'], 
                         help='Logging level for the logger, default = debug')
     parser.add_argument('-lp','--langpack', default='languages.json', 
                         help='Location to the file that contains the JSON object listing languages.')
-    parser.add_argument('-g','--googleKey', help="Auth Key for google account")
     parser.add_argument('-muri','--MongoURI', default='mongodb://localhost:27017', help="The MongoDB URI for connection and auth")
     parser.add_argument('-mdb','--MongoDB', default='speech', help="The MongoDB Database that this will use")
     parser.add_argument('-thr', '--thresh', default=100, type=int, help='Threshold in minutes for the alert.')
@@ -416,8 +353,6 @@ def startFromCLI():
         logger.debug("Languages %s" % str(LANGUAGES.keys()))
     
     AUTHTOKEN = args.auth
-    AUTHKEY = args.googleKey
-    logger.debug(AUTHKEY)
     MCLIENT = MongoClient(args.MongoURI)
     MDB = MCLIENT[args.MongoDB]
     
