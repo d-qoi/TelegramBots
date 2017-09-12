@@ -1,0 +1,22 @@
+Processing Update: {'update_id': 37373455, 'edited_message':
+{'date': 1505073259,
+ 'new_chat_photo': [],
+ 'channel_chat_created': False,
+ 'delete_chat_photo': False,
+ 'new_chat_members': [],
+ 'message_id': 2708,
+ 'from':
+   {'is_bot': False, 'first_name': 'YT', 'last_name': 'Kileroy\u202e\u202e', 'username': 'YTKileroy', 'id': 153553072, 'language_code': 'en-US'},
+  'entities': [],
+  'group_chat_created': False,
+  'photo': [],
+  'chat':
+   {'first_name': 'YT',
+   'type': 'private',
+   'username': 'YTKileroy',
+   'id': 153553072,
+   'last_name': 'Kileroy\u202e\u202e'},
+  'new_chat_member': None,
+  'edit_date': 1505073263,
+  'text': 'N',
+  'supergroup_chat_created': False}}

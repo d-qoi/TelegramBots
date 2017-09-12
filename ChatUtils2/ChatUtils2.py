@@ -1,3 +1,4 @@
+#! /usr/bin/env/python3
 '''
 Created on Jan 19, 2017
 
@@ -7,16 +8,17 @@ Created on Jan 19, 2017
 import logging
 import argparse
 
-from calendarEventHandler import calendarEventHandler
-from extraUtils import checkValidCommand, checkTypeGroup
+from ChatUtils.calendarEventHandler import calendarEventHandler
+#from ChatUtils.pollEventHandler import pollEventHandler
+from ChatUtils.extraUtils import checkValidCommand, checkTypeGroup
 
 from pymongo import MongoClient
 from telegram import TelegramError, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Updater, Job, CommandHandler, CallbackQueryHandler
-from pollEventHandler import pollEventHandler
+
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.DEBUG)
+        level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 authToken = None
@@ -28,13 +30,13 @@ def callbackHandler(bot, update):
     query = update.callback_query
     from_user = query.from_user
     logger.debug("Answering Callback Query for %s (%s)" % (query.message.chat.title, query.message.chat.id))
-    
-    if query.data == "RegisterMe":
-        #userDict = createUserDict(from_user)
-        userDict = from_user.id
-        mDatabase.groups.update({'_id':query.message.chat.id},
-                            {'$addToSet':{'users':userDict}},
+
+    #userDict = createUserDict(from_user)
+    userDict = from_user.id
+    mDatabase.groups.update({'_id':query.message.chat.id},
+                        {'$addToSet':{'users':userDict}},
                             upsert=True)
+    query.answer(text="You have been registered with %s"%query.message.chat.title)
 
 def registerMe(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
@@ -42,6 +44,7 @@ def registerMe(bot, update):
     
     if not checkTypeGroup(update):
         update.message.reply_text("This only works in groups the bot is in. If you would like to add the bot to a group, do so and then send /registerme")
+        return
     
     #userDict = createUserDict(update.message.from_user)
     userDict = update.message.from_user.id
@@ -106,12 +109,14 @@ def updateChatList(bot, job):
             mDatabase.groups.find_one_and_update({'_id':doc['_id']},
                                            { '$set' : {'title':chat.title}})
         except TelegramError:
-            logger.info("Removing %s (%s) from the database, it is not responding, re-add the bot if this is incorrect." % (doc['title'],doc['_id']))
-            mDatabase.groups.remove({'_id':doc['_id']})
+            logger.info("Not yet removing %s (%s) from the database, it is not responding" % (doc['title'],doc['_id']))
+            #mDatabase.groups.remove({'_id':doc['_id']})
 
         except:
             logger.info("Other error when checking %s (%s), check networking" % (doc['title'],doc['_id']))
 
+def empty_callback(bot, update):
+    pass
 
 def main():
     global mClient, mDatabase
@@ -131,20 +136,18 @@ def main():
     updater = Updater(authToken)
     dp = updater.dispatcher
     
-    
     dp.add_handler(CommandHandler('motd', MOTD))
-    dp.add_handler(CommandHandler('setmotd', setMOTD))
+    dp.add_handler(CommandHandler('set_motd', setMOTD))
     
-    dp.add_handler(CommandHandler('registerme', registerMe))
+    dp.add_handler(CommandHandler('register_me', registerMe))
+    dp.add_handler(CallbackQueryHandler(callbackHandler, pattern='RegisterMe'))
     
-    calendar = calendarEventHandler(mDatabase.groups, updater.job_queue)
-    dp.add_handler(CommandHandler('listevents', calendar.getEventList))
-    dp.add_handler(calendar.conversationHandler)
+    calendar = calendarEventHandler(mDatabase.groups, updater.job_queue, dp)
     
-    polls = pollEventHandler(mDatabase.groups, mDatabase.pollData)
-    dp.add_handler(polls.pollCreateHandler)
-    
-    dp.add_handler(CallbackQueryHandler(callbackHandler))
+    #polls = pollEventHandler(mDatabase.groups, mDatabase.pollData)
+    #dp.add_handler(polls.pollCreateHandler)
+
+    dp.add_handler(CallbackQueryHandler(empty_callback, pattern=' '))
     
     updateAdmins = Job(updateChatList, 60*5)
     updater.job_queue.put(updateAdmins, next_t=0)
