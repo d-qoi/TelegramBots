@@ -1,0 +1,2 @@
+pymongo
+git+https://github.com/d-qoi/MongoDict#egg=MongoDict
