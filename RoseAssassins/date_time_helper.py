@@ -1,23 +1,26 @@
+#TODO Timezone support
+
 import datetime
 import calendar
 import logging
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+from MongoDict import MongoDict
 
 class DateTimeHelper:
-    def __init__(self, logger=None, callback=None):
+    def __init__(self, logger=None, collection=None):
         self.logger = logger or logging.getLogger(__name__)
-        self.data = {}
+        self.data = MongoDict(collection=collection)
 
     def create_calendar_message(self, bot, update):
         now = datetime.datetime.now()
         self.data[update.effective_chat.id] = [now.year, now.month]
-        reply_markup = self.create_calendar_markup(*self.data[update.update.effective_chat.id])
+        reply_markup = self.create_calendar_markup(*self.data[update.effective_chat.id])
         if update.callback_query:
             bot.edit_message_text("Please choose the end date for your game.",
                                   reply_markup=reply_markup,
                                   chat_id = update.effective_chat.id,
-                                  message_id = update.effective_message.id)
+                                  message_id = update.effective_message.message_id)
             return None
         update.effective_message.reply_text("Please choose the end date for your game.",
                                   reply_markup=reply_markup)
@@ -29,27 +32,32 @@ class DateTimeHelper:
         id = update.effective_chat.id
         date = None
         reply_markup = None
+        cq.answer()
         if 'p' in data:
             self.data[id][1] -= 1
             if self.data[id][1] is 0:
                 self.data[id][1] = 12
                 self.data[id][0] -= 1
-                reply_markup=self.create_calendar_markup(*self.data[id])
+            reply_markup=self.create_calendar_markup(*self.data[id])
 
         elif 'n' in data:
             self.data[id][1] += 1
             if self.data[id][1] is 13:
                 self.data[id][1] = 1
                 self.data[id][0] += 1
-                reply_markup = self.create_calendar_markup(*self.data[id])
+            reply_markup = self.create_calendar_markup(*self.data[id])
 
         elif 'd' in data:
-            date = datetime.datetime.strftime(data, 'cal-d-%d-%m-%Y')
+            date = datetime.datetime.strptime(data, 'cal-d-%d-%m-%Y')
+            bot.edit_message_text("Date Updated",
+                                  chat_id=cq.message.chat_id,
+                                  message_id=cq.message.message_id)
 
         bot.answer_callback_query(cq.id)
-        bot.edit_message_replyMarkup(chat_id=cq.message.chat_id,
-                                     message_id=cq.message.message_id,
-                                     reply_markup=reply_markup)
+        if reply_markup:
+            bot.edit_message_reply_markup(chat_id=cq.message.chat_id,
+                                          message_id=cq.message.message_id,
+                                          reply_markup=reply_markup)
         return date
 
     def create_clock_message(self, bot, update):
@@ -60,17 +68,18 @@ class DateTimeHelper:
             bot.edit_message_text("Please choose the end date for your game.",
                                   reply_markup=reply_markup,
                                   chat_id = update.effective_chat.id,
-                                  message_id = update.effective_message.id)
+                                  message_id = update.effective_message.message_id)
             return None
         update.effective_message.reply_text("Please choose the end date for your game.",
                                   reply_markup=reply_markup)
 
-    def time_handler(self, bot, update):
+    def clock_handler(self, bot, update):
         data = update.callback_query.data
         cq = update.callback_query
         id = update.effective_chat.id
         reply_markup=None
         time = None
+        cq.answer()
         if  'h' in data:
             if 'u' in data:
                 self.data[id][0] += 1
@@ -80,7 +89,7 @@ class DateTimeHelper:
                 self.data[id][0] -= 1
                 if self.data[id][0] <= -1:
                     self.data[id][0] = 23
-            reply_markup = self.create_calendar_markup(*self.data[id])
+            reply_markup = self.create_clock_markup(*self.data[id])
         elif 'm' in data:
             if 't' in data: #tens
                 if 'u' in data: #up
@@ -100,7 +109,7 @@ class DateTimeHelper:
                     self.data[id][1] -= 1
                     if self.data[id][1] < 0:
                         self.data[id][1] += 60
-            reply_markup = self.create_calendar_markup(*self.data[id])
+            reply_markup = self.create_clock_markup(*self.data[id])
         elif 'a' in data: #am/pm
             if 'u' in data:
                 self.data[id][0] += 12
@@ -110,9 +119,17 @@ class DateTimeHelper:
                 self.data[id][0] -= 12
                 if self.data[id][0] <= -1:
                     self.data[id][0] += 24
-            reply_markup = self.create_calendar_markup(*self.data[id])
+            reply_markup = self.create_clock_markup(*self.data[id])
         elif 'done' in data:
+            bot.edit_message_text("Time updated",
+                                          chat_id=cq.message.chat_id,
+                                          message_id=cq.message.message_id)
             time = datetime.datetime(1, 1, 1, hour=self.data[id][0], minute=self.data[id][1])
+        bot.answer_callback_query(cq.id)
+        if reply_markup:
+            bot.edit_message_reply_markup(chat_id=cq.message.chat_id,
+                                         message_id=cq.message.message_id,
+                                         reply_markup=reply_markup)
         return time
 
     def create_calendar_markup(self, year, month):
@@ -146,8 +163,10 @@ class DateTimeHelper:
 
     def create_clock_markup(self, hr, min):
         # apm :: True for AM, False for PM
-        apm = hr < 12
         self.logger.debug("Creating clock for %d %d" % (hr, min))
+        apm = hr < 12
+        hr = hr if hr < 13 else hr - 12
+        hr = hr if hr != 0 else 12
         markup = []
         temp = []
         markup.append([
@@ -158,7 +177,7 @@ class DateTimeHelper:
             InlineKeyboardButton('^', callback_data='clk-a-u')
         ])
         markup.append([
-            InlineKeyboardButton(str((hr%12)+1), callback_data=' '),
+            InlineKeyboardButton(str(hr if hr < 13 else hr-12), callback_data=' '),
             InlineKeyboardButton(':', callback_data=' '),
             InlineKeyboardButton(str(int(min / 10)), callback_data=' '),
             InlineKeyboardButton(str(int(min % 10)), callback_data=' '),
@@ -174,3 +193,6 @@ class DateTimeHelper:
         markup.append([InlineKeyboardButton("Done", callback_data="clk-done")])
         self.logger.debug("Created clock")
         return InlineKeyboardMarkup(markup)
+
+    def now(self):
+        return datetime.datetime.now()

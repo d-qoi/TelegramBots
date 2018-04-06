@@ -4,6 +4,7 @@ import functools
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Filters, CommandHandler, CallbackQueryHandler, MessageHandler
 from cust_handlers.conversationhandler import ConversationHandler
+from date_time_helper import DateTimeHelper
 
 """
 game_data_dict = {
@@ -20,8 +21,17 @@ game_data_dict = {
 }
 """
 
-def log(func):
-    logger = logging.getLogger(func.__module__)
+def restrict(func):
+    @functools.wraps(func)
+    def decorator(self, bot, update, *args, **kwargs):
+        admins = self.MDB.games.find_one({'group_id': update.effective_chat.id}, {'admins': 1})
+        if update.effective_user.id not in admins['admins']:
+            return
+        return func(self, bot, update, *args, **kwargs)
+    return decorator
+
+def log(func, logger=None):
+    logger = logger or logging.getLogger(func.__module__)
 
     @functools.wraps(func)
     def decorator(self, *args, **kwargs):
@@ -36,9 +46,14 @@ class Games(object):
     SET_RULES_RESPONSE = 2
     SET_NAME_RESPONSE = 3
 
+    SET_DATETIME = 4
+
+    logger=None
+
     def __init__(self, dp, MDB, logger=None):
         self.MDB = MDB
         self.logger = logger or logging.getLogger(__name__)
+        self.DTH = DateTimeHelper(logger=logger, collection=MDB.calendar_conversations)
         self.main_conversation = ConversationHandler(
             per_user=False, per_chat=True,
             entry_points=[
@@ -53,6 +68,9 @@ class Games(object):
                 ],
                 self.SET_NAME_RESPONSE: [
                     MessageHandler(Filters.text, self.set_name_response)
+                ],
+                self.SET_DATETIME: [
+                    CallbackQueryHandler(self.set_datetime, pattern="(cal|clk)\-.+", pass_groups=True)
                 ]
             },
             fallbacks=[
@@ -74,6 +92,9 @@ class Games(object):
 
     @log
     def create_game(self, bot, update): # command only
+        chat_member = bot.get_chat_member(update.effective_chat.id, update.effective_user.id)
+        if chat_member.status not in ['administrator', 'creator']:
+            return
 
         reply_text = "Game created for %s"%(update.message.chat.title)
 
@@ -86,7 +107,7 @@ class Games(object):
                 "chanel_id": None,
                 "group_id": update.message.chat.id,
                 "rules": "Tag a your target and use the menu to signal your kill!",
-                "end_date": None,
+                "end_date": self.DTH.now(),
                 "creator_id": update.message.from_user.id,
                 "creator_name": update.message.from_user.username,
                 "admins":[],
@@ -107,25 +128,30 @@ class Games(object):
 
     @log
     def main_menu_prompt(self, bot, update):
-        name = self.MDB.games.find_one({"group_id": update.message.chat.id}, {'game_name': 1})
+        name = self.MDB.games.find_one({"group_id": update.effective_chat.id}, {'game_name': 1})
         reply_text = "Main Menu for {}".format(name['game_name'])
-        keyboard = InlineKeyboardMarkup([
+        reply_markup = InlineKeyboardMarkup([
+            [InlineKeyboardButton("Create Join Prompt", callback_data="games mm jp")],
             [InlineKeyboardButton("Set Rules", callback_data="games mm sr")],
             [InlineKeyboardButton("Set Admins", callback_data="games mm sa")],
             [InlineKeyboardButton("Add Channel", callback_data="games mm ac")],
-            [InlineKeyboardButton("Create Join Prompt", callback_data="games mm jp")],
-            [InlineKeyboardButton("Set End Time", callback_data="games mm et")],
-            [InlineKeyboardButton("Change Game Title", callback_data="games mm gt")]
+            [InlineKeyboardButton("Change Game Title", callback_data="games mm gt")],
+            [InlineKeyboardButton("Set End Time", callback_data="games mm et"),
+             InlineKeyboardButton("Set End Date", callback_data="games mm ed")]
         ])
-        update.message.reply_text(reply_text, reply_markup=keyboard, quote=False)
+        if update.callback_query:
+            update.effective_message.edit_text(reply_text, reply_markup=reply_markup)
+        else:
+            update.effective_message.reply_text(reply_text, reply_markup=reply_markup, quote=False)
         return self.MAIN_MENU_RESPONSE
 
     @log
+    @restrict
     def main_menu_response(self, bot, update, groups=None):
         group_id = update.effective_chat.id
-        admins = self.MDB.findOne({'group_id':group_id}, {'admins':1})
-        if update.effective_user.id not in admins:
-            return
+        # admins = self.MDB.findOne({'group_id':group_id}, {'admins':1})
+        # if update.effective_user.id not in admins:
+        #     return
         self.logger.debug("groups: %s", groups[0])
         if groups[0] == 'sr':
             reply_text = "Please send me the rules for the game."
@@ -155,12 +181,15 @@ class Games(object):
             return self.MAIN_MENU_RESPONSE
 
         elif groups[0] == 'et':
-            update.callback_query.answer(text="Not implemented yet")
-            return self.MAIN_MENU_RESPONSE
-            pass
+            self.DTH.create_clock_message(bot, update)
+            return self.SET_DATETIME
+        elif groups[0] == 'ed':
+            self.DTH.create_calendar_message(bot, update)
+            return self.SET_DATETIME
+
         elif groups[0] == 'gt':
             reply_text = "Please send me a new title for the game (under 50 characters)"
-            update.message.reply_text(reply_text, reply_markup=None, quote=False)
+            update.effective_message.reply_text(reply_text, reply_markup=None, quote=False)
             return self.SET_NAME_RESPONSE
         self.logger.warning("Unknown group called for main menu: %d", groups[0])
         return self.MAIN_MENU_RESPONSE
@@ -170,23 +199,47 @@ class Games(object):
         pass
 
     @log
+    @restrict
     def set_name_response(self, bot, update):
-        admins = self.MDB.findOne({'group_id': update.effective_chat.id}, {'admins': 1})
-        if update.effective_user.id not in admins:
-            return
+        # admins = self.MDB.findOne({'group_id': update.effective_chat.id}, {'admins': 1})
+        # if update.effective_user.id not in admins:
+        #     return
         text = update.message.text[:51]
         self.MDB.games.update_one({'group_id': update.effective_chat.id},
                                    {'$set':{'game_name':text}})
         return self.main_menu_prompt(bot, update)
 
     @log
+    @restrict
     def set_rules_response(self, bot, update):
-        admins = self.MDB.findOne({'group_id': update.effective_chat.id}, {'admins': 1})
-        if update.effective_user.id not in admins:
-            return
+        # admins = self.MDB.findOne({'group_id': update.effective_chat.id}, {'admins': 1})
+        # if update.effective_user.id not in admins:
+        #     return
         self.MDB.games.update_one({'group_id': update.effective_chat.id},
                                    {'$set': {'rules': update.message.text}})
         return self.main_menu_prompt(bot, update)
+
+    @log
+    @restrict
+    def set_datetime(self, bot, update, groups=None):
+        # admins = self.MDB.findOne({'group_id': update.effective_chat.id}, {'admins': 1})
+        # if update.effective_user.id not in admins:
+        #     return
+        resp = None
+        group_id = update.effective_chat.id
+        end_datetime = self.MDB.games.find_one({'group_id':group_id}, {"end_date":1})['end_date']
+        if 'cal' in groups[0]:
+            resp = self.DTH.calendar_handler(bot, update)
+            if resp:
+                end_datetime = end_datetime.replace(year=resp.year, month=resp.month, day=resp.day)
+        else:
+            resp = self.DTH.clock_handler(bot, update)
+            if resp:
+                end_datetime = end_datetime.replace(hour=resp.hour, minute=resp.minute)
+        if resp:
+            self.MDB.games.update({'group_id':group_id}, {'$set':{"end_date":end_datetime}})
+            return self.main_menu_prompt(bot, update)
+        return self.SET_DATETIME
 
     @log
     def join_game(self, bot, update, groups=None):
@@ -216,6 +269,3 @@ class Games(object):
         self.logger.debug(bot.username)
         bot.answerCallbackQuery(update.callback_query.id, url="https://t.me/{}?start=True".format(bot.username))
         #update.callback_query.answer(text="test",)
-
-    @log
-    def calendar_call_back(self, ):

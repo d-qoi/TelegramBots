@@ -3,7 +3,7 @@ import logging
 import argparse
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.DEBUG) # To make sure that it is just pushing modism debug into the log
+    level=logging.INFO) # To make sure that it is just pushing modism debug into the log
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
@@ -46,8 +46,8 @@ def main():
     logger.info("Passed Auth")
     dp = updater.dispatcher
 
-    game_state = Games(dp, MDB)
-    user_state = Users(dp, MDB)
+    game_state = Games(dp, MDB, logger=logger)
+    user_state = Users(dp, MDB, logger=logger)
 
 
     updater.start_polling()

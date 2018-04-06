@@ -56,7 +56,7 @@ def help(bot, update):
 
 
 def receiveMessage(bot, update):
-    if update.message.chat.type == 'group' or update.message.chat.type == 'supergroup' and not update.message.chat.all_members_are_admins:
+    if update.message.chat.type == 'group' or update.message.chat.type == 'supergroup':
         admins = update.message.chat.get_administrators()
         adminUsernames = [chatmember.user.username for chatmember in admins]
         adminIDs = [chatmember.user.id for chatmember in admins]
