@@ -647,7 +647,7 @@ def updateChatList(bot, job):
         except TelegramError as te:
             logger.warning("Removing %s (%s) from the database, it is not responding, re-add the bot if this is incorrect." % (doc['title'],doc['_id']))
             logger.debug("Error received: %s" % (str(te)))
-            MDB.groups.remove({'_id':doc['_id']})
+            #MDB.groups.remove({'_id':doc['_id']})
 
         except:
             logger.info("Other error when checking %s (%s), check networking" % (doc['title'],doc['_id']))
