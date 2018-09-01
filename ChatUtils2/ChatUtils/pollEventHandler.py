@@ -5,9 +5,10 @@ Created on Jan 19, 2017
 '''
 import logging
 
-from extraUtils import checkValidCommand, checkTypePrivate, getUserName
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import ConversationHandler, CommandHandler, MessageHandler, Filters, CallbackQueryHandler
+
+from ChatUtils.extraUtils import checkValidCommand, checkTypePrivate, getUserName
 
 
 class pollEventHandler(object):
@@ -157,10 +158,9 @@ class pollEventHandler(object):
     def pollCancel(self, bot, update, user_data):
         update.message.reply_text('Canceling new poll.')
         return ConversationHandler.END
-        
-    
 
-        
+    def answerPollList(self, bot, update):
+        pass
         
         
         
