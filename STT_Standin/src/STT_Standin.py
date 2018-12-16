@@ -118,8 +118,8 @@ def info(bot, update):
     if not checkValidCommand(update.message.text, bot.username):
         return
     reply_text = "This bot uses the Google Speech API for transcription.\n\n"
-    reply_text += "Developed and maintained by @ytkileroy.\n"
-    reply_text += "If you wish to help support development of this bot, consider becoming a patron at: https://www.patreon.com/YTKileroy.\n\n"
+    reply_text += "Developed and maintained by @.\n"
+    reply_text += "If you wish to help support development of this bot, consider becoming a patron at: https://www.patreon.com/.\n\n"
     reply_text += "Please share this bot with everyone!\n"
     reply_text += "And if you want to know how this bot is doing, try calling /getStats"
     update.message.reply_text(reply_text)
@@ -136,11 +136,10 @@ Sono triste dire che è diventato troppo costoso per continuare a ospitare @list
 
 Non mi aspettavo che il bot cresca così, ma sono contento che sia diventato popolare.
 
-Se vuoi supportarmi per mantenere vivo questo bot, pensa a parlare con @YTKileroy o donando per mantenere questo bot in esecuzione attraverso il mio sito web (/supporto)
+Se vuoi supportarmi per mantenere vivo questo bot, pensa a parlare con @ o donando per mantenere questo bot in esecuzione attraverso il mio sito web (/supporto)
 
 Grazie,
-Y.T. Kileroy
-@YTKileroy
+
 """
 
     elif 'es' in chat_data['lang']:
@@ -151,11 +150,9 @@ Estoy triste de decir que se ha vuelto demasiado caro para seguir corriendo @ li
 
 No esperaba que el bot creciera así, pero me alegro de que fuera popular.
 
-Si quieres apoyarme para mantener este bot vivo, piensa en hablar con @YTKileroy o donar para mantener este bot ejecutándose en mi sitio web (/support)
+Si quieres apoyarme para mantener este bot vivo, piensa en hablar con @ o donar para mantener este bot ejecutándose en mi sitio web (/support)
 
 Gracias,
-Y.T. Kileroy
-@YTKileroy
 """
 
     elif 'ru' in chat_data['lang']:
@@ -166,11 +163,9 @@ Y.T. Kileroy
 
 Я не ожидал, что бот будет расти таким образом, но я рад, что он был популярен.
 
-Если вы хотите поддержать меня, чтобы этот бот был жив, подумайте о том, как поговорить с @YTKileroy или пожертвовать этого бота на мой сайт (/support)
+Если вы хотите поддержать меня, чтобы этот бот был жив, подумайте о том, как поговорить с @ или пожертвовать этого бота на мой сайт (/support)
 
 Спасибо,
-Y.T. Kileroy
-@YTKileroy   
 """
     elif 'pt' in chat_data['lang']:
             reply_text = """
@@ -180,11 +175,9 @@ Estou triste em dizer que tornou-se muito caro para mim continuar hospedando @li
 
 Não esperava que ele crescesse, mas estou feliz por ter se tornado popular.
 
-Se você gostaria de me apoiar para manter este bot online, considere falar com @YTKileroy, ou doar para este bot no meu site (/ support)
+Se você gostaria de me apoiar para manter este bot online, considere falar com @, ou doar para este bot no meu site (/ support)
 
 Obrigado,
-Y.T. Kileroy
-@YTKileroy
 """
 
     else:
@@ -195,14 +188,12 @@ I am sad to say that it has become too expensive for me to continue hosting @lis
 
 I was not expecting it to grow as it did, but I am glad it became popular.
 
-If you would like to support me to keep this bot online, consider talking to @YTKileroy, or donating to keep this bot running through my website (/support) 
+If you would like to support me to keep this bot online, consider talking to @, or donating to keep this bot running through my website (/support) 
 
-Y.T. Kileroy
-@YTKileroy
 """
 
-    suplist = [[InlineKeyboardButton('Website', 'https://ytkileroy.github.io/TelegramBots/'),
-               InlineKeyboardButton('Patreon', 'https://www.patreon.com/YTKileroy')]]
+    suplist = [[InlineKeyboardButton('Website', 'https://.github.io/TelegramBots/'),
+               InlineKeyboardButton('Patreon', 'https://www.patreon.com/')]]
     update.message.reply_text(reply_text, reply_markup = InlineKeyboardMarkup(suplist), quote=False)
     
 @run_async   
